@@ -1,0 +1,6 @@
+{
+  "name": "熊からの脱出 ゲーム仕様書",
+  "description": "山に迷い込んだ主人公が、恐ろしいクマから逃げながら地図を手に入れて山を下る、見下ろし視点2Dホラーゲームの仕様書です。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
