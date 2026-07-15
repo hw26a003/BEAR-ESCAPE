@@ -85,6 +85,9 @@ export default function App() {
   // 鈴を使用する関数 (既存の UI ボタンや F キーで呼び出し)
   const useBell = () => {
     if (engineRef.current && activeItems.bell > 0) {
+      if (engineRef.current.bellActiveTimer > 0) {
+        return; // 効果持続中は再使用不可
+      }
       engineRef.current.useBell();
       playBeep(293, 0.15, 'sine'); // チリン
       setTimeout(() => {
@@ -111,7 +114,7 @@ export default function App() {
           setShowMapModal(prev => !prev);
           playBeep(520, 0.15);
         }
-      } else if (key === 'f') {
+      } else if (key === 'q') {
         if (activeItems.bell > 0 && isGameStarted && !previewEncounter && !isEscaped) {
           useBell();
         }
@@ -701,7 +704,7 @@ export default function App() {
                     {/* HUD / Items Counter */}
                     <div className="absolute bottom-3 left-3 flex gap-2 text-[8px] font-mono uppercase">
                       <div className="bg-black/80 px-2 py-0.5 border border-[#333] text-gray-300">
-                        Bell: {activeItems.bell > 0 ? `0${activeItems.bell}` : "EMPTY"}
+                        Bell: {activeItems.bell > 0 ? `${Math.ceil(activeItems.bell / 2)}個 (残り${activeItems.bell}回) [Q]` : "EMPTY"}
                       </div>
                       <div className="bg-black/80 px-2 py-0.5 border border-[#333] text-gray-300">
                         Spray: {activeItems.spray > 0 ? `0${activeItems.spray}` : "EMPTY"}
@@ -824,8 +827,8 @@ export default function App() {
                       <span className="text-[#ffcc00] font-bold">R キー / HUDクリック</span>
                     </div>
                     <div className="flex justify-between border-b border-zinc-900 pb-1">
-                      <span className="text-zinc-500">鈴を鳴らす (追跡5秒無効)</span>
-                      <span className="text-[#ffcc00] font-bold">F キー / 残回数消費</span>
+                      <span className="text-zinc-500">鈴を鳴らす (追跡10秒無効 + 再使用CD)</span>
+                      <span className="text-[#ffcc00] font-bold">Q キー / 残回数消費</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-zinc-500">アイテム回収 & 生存者救助</span>

@@ -379,11 +379,11 @@ export class GameEngine {
 
   // 鈴の使用
   public useBell() {
-    if (this.bellCount <= 0) return;
+    if (this.bellCount <= 0 || this.bellActiveTimer > 0) return;
     this.bellCount -= 1;
-    this.bellActiveTimer = 900; // 15秒 (900フレーム@60fps)
+    this.bellActiveTimer = 600; // 10秒 (600フレーム@60fps)
     this.callbacks.onItemsChange({ map: this.hasMap, bell: this.bellCount, spray: this.sprayCount });
-    this.callbacks.onPopupMessage("🔔 鈴を鳴らした！15秒間、クマがあなたを見失う。");
+    this.callbacks.onPopupMessage("🔔 鈴を鳴らした！10秒間、クマがあなたを見失う。");
   }
 
   // 1フレーム更新
@@ -674,7 +674,7 @@ export class GameEngine {
             this.callbacks.onPopupMessage("🗺️ 地図を獲得した！[R]キーで全体マップを開く。");
           } else if (item.type === 'bell') {
             this.bellCount += 2;
-            this.callbacks.onPopupMessage("🔔 古びた鈴を獲得した！[F]キーで鳴らすと15秒間クマを欺ける。");
+            this.callbacks.onPopupMessage("🔔 古びた鈴を獲得した！[Q]キーで鳴らすと10秒間クマを欺ける。");
           } else if (item.type === 'spray') {
             this.sprayCount += 1;
             this.callbacks.onPopupMessage("💨 熊撃退スプレーを獲得した！戦闘時のみ使用可能。");
@@ -898,6 +898,36 @@ export class GameEngine {
     // 5. プレイヤーの描画
     const prx = this.playerX - camX;
     const pry = this.playerY - camY;
+
+    // ソナーエフェクトの描画 (鈴の効果が有効な間、プレイヤーの周囲に広がるゴールドの波紋)
+    if (this.bellActiveTimer > 0) {
+      ctx.save();
+      const time = performance.now();
+      
+      // 3本の波紋を時間差で広げる
+      for (let i = 0; i < 3; i++) {
+        // 各波紋の位相 (0.0 〜 1.0)
+        const phase = ((time / 1000) + i * 0.33) % 1.0;
+        const radius = phase * 130; // 最大130pxまで広がる
+        const opacity = Math.max(0, 1 - phase) * 0.6; // 外側に行くほどフェードアウト
+        
+        ctx.strokeStyle = `rgba(234, 179, 8, ${opacity})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(prx, pry, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      // 残り時間をプレイヤーの少し上にテキストで表示
+      const remainingSeconds = (this.bellActiveTimer / 60).toFixed(1);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🔔 ACTIVE: ${remainingSeconds}s`, prx, pry - 20);
+      
+      ctx.restore();
+    }
+
     ctx.save();
 
     // 懐中電灯光軸
