@@ -57,6 +57,8 @@ export class GameEngine {
   private callbacks: EngineCallbacks;
   private maskCanvas: HTMLCanvasElement | null = null;
   private maskCtx: CanvasRenderingContext2D | null = null;
+  private offscreenCanvas: HTMLCanvasElement | null = null;
+  private offscreenCtx: CanvasRenderingContext2D | null = null;
 
   // プレイヤー状態
   public playerX = 4800;
@@ -111,6 +113,15 @@ export class GameEngine {
     if (!context) throw new Error('Could not get 2D rendering context');
     this.ctx = context;
     this.callbacks = callbacks;
+
+    // オフスクリーンCanvasの初期化 (480x272解像度に一度縮小して、ニアレストネイバーで2倍拡大し完璧なドット絵にする)
+    this.offscreenCanvas = document.createElement('canvas');
+    this.offscreenCanvas.width = 480;
+    this.offscreenCanvas.height = 272;
+    const oCtx = this.offscreenCanvas.getContext('2d');
+    if (oCtx) {
+      this.offscreenCtx = oCtx;
+    }
   }
 
   // 10分(600秒)のバッテリー寿命に比例した懐中電灯照射半径
@@ -814,6 +825,7 @@ export class GameEngine {
     const ctx = this.ctx;
     const camX = this.cameraX;
     const camY = this.cameraY;
+    const textDrawQueue: any[] = [];
 
     // キャンバスクリア
     ctx.fillStyle = '#050c05'; // 深い山の闇緑
@@ -1142,10 +1154,14 @@ export class GameEngine {
           // プレイヤーが近くにいる場合、操作案内テキストを表示
           const pDist = Math.sqrt((this.playerX - item.x) ** 2 + (this.playerY - item.y) ** 2);
           if (pDist < 120) {
-            ctx.fillStyle = '#ffcc00';
-            ctx.font = 'bold 9px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('[右クリックで拾う]', rx, ry - 18 + bob);
+            textDrawQueue.push({
+              text: '[右クリックで拾う]',
+              x: rx,
+              y: ry - 18 + bob,
+              font: 'bold 10px sans-serif',
+              color: '#ffcc00',
+              align: 'center'
+            });
           }
 
           ctx.restore();
@@ -1542,32 +1558,52 @@ export class GameEngine {
         ctx.lineWidth = 0.8;
         ctx.stroke();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 7px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(String(surv.id + 1), rx, ry - 11.5 + bob);
+        textDrawQueue.push({
+          text: String(surv.id + 1),
+          x: rx,
+          y: ry - 11.5 + bob,
+          font: 'bold 8px sans-serif',
+          color: '#ffffff',
+          align: 'center'
+        });
 
         if (!surv.saved) {
           ctx.fillStyle = '#dc2626';
           ctx.fillRect(rx - 16, ry - 30 + pulse, 32, 9);
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 7px sans-serif';
-          ctx.fillText('HELP!', rx, ry - 23 + pulse);
+
+          textDrawQueue.push({
+            text: 'HELP!',
+            x: rx,
+            y: ry - 23 + pulse,
+            font: 'bold 8px sans-serif',
+            color: '#ffffff',
+            align: 'center'
+          });
 
           // プレイヤーが近くにいる場合、操作案内テキストを表示
           const pDist = Math.sqrt((this.playerX - surv.x) ** 2 + (this.playerY - surv.y) ** 2);
           if (pDist < 120) {
-            ctx.fillStyle = '#10b981';
-            ctx.font = 'bold 9px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('[右クリックで救助]', rx, ry - 37 + pulse);
+            textDrawQueue.push({
+              text: '[右クリックで救助]',
+              x: rx,
+              y: ry - 37 + pulse,
+              font: 'bold 10px sans-serif',
+              color: '#10b981',
+              align: 'center'
+            });
           }
         } else {
           ctx.fillStyle = '#10b981';
           ctx.fillRect(rx - 16, ry - 29, 32, 9);
-          ctx.fillStyle = '#fff';
-          ctx.font = '7px sans-serif';
-          ctx.fillText('SAFE', rx, ry - 22);
+
+          textDrawQueue.push({
+            text: 'SAFE',
+            x: rx,
+            y: ry - 22,
+            font: 'bold 8px sans-serif',
+            color: '#ffffff',
+            align: 'center'
+          });
         }
       }
     });
@@ -1594,10 +1630,14 @@ export class GameEngine {
         ctx.arc(rx, ry, 10, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 8px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('EXIT', rx, ry + 3);
+        textDrawQueue.push({
+          text: 'EXIT',
+          x: rx,
+          y: ry + 3,
+          font: 'bold 9px monospace',
+          color: '#ffffff',
+          align: 'center'
+        });
         ctx.restore();
       }
     }
@@ -1627,10 +1667,14 @@ export class GameEngine {
       
       // 残り時間をプレイヤーの少し上にテキストで表示
       const remainingSeconds = (this.bellActiveTimer / 60).toFixed(1);
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(`🔔 ACTIVE: ${remainingSeconds}s`, prx, pry - 20);
+      textDrawQueue.push({
+        text: `🔔 ACTIVE: ${remainingSeconds}s`,
+        x: prx,
+        y: pry - 20,
+        font: 'bold 10px monospace',
+        color: '#fbbf24',
+        align: 'center'
+      });
       
       ctx.restore();
     }
@@ -1775,43 +1819,93 @@ export class GameEngine {
           ctx.scale(1.25, 1.25); // クマを1.25倍に拡大
           ctx.rotate(bearAngle);
 
-          // 1. 背中の金色の突起（棘・スパイク）- 背中側（左側・進行方向の逆）に複数放射
-          const spikeCount = 5;
-          const isSpikeGlow = bear.state === 'chase' && (Math.floor(time / 150) % 2 === 0);
-          ctx.fillStyle = isSpikeGlow ? '#c084fc' : '#eab308'; // 追跡中は紫に明滅、通常は金色
-          ctx.strokeStyle = isSpikeGlow ? '#581c1c' : '#854d0e';
-          ctx.lineWidth = 1;
-          
-          for (let i = 0; i < spikeCount; i++) {
-            const angleOffset = -Math.PI * 0.65 + (i * (Math.PI * 1.3 / (spikeCount - 1))); // 後方180度に分散
+          // 1. 背中や足元からのたうつ赤い寄寄生組織・触手（くねくね動くアニメーション）
+          const tentacleCount = 6;
+          ctx.strokeStyle = '#dc2626'; // 鮮血の赤
+          ctx.lineWidth = 2.2;
+          ctx.lineCap = 'round';
+          for (let i = 0; i < tentacleCount; i++) {
+            const angleOffset = -Math.PI * 0.75 + (i * (Math.PI * 1.5 / (tentacleCount - 1))); // 後方〜側方に放射
             ctx.save();
             ctx.rotate(angleOffset);
+            
             ctx.beginPath();
             ctx.moveTo(-11, 0);
-            ctx.lineTo(-21, -3.5);
-            ctx.lineTo(-15, -6.5);
-            ctx.closePath();
-            ctx.fill();
+            const length = 18 + Math.sin(time / 140 + i * 1.8) * 4;
+            ctx.lineTo(-11 - length * 0.35, Math.sin(time / 110 + i) * 2.5);
+            ctx.lineTo(-11 - length * 0.7, Math.cos(time / 130 + i * 1.4) * 4);
+            ctx.lineTo(-11 - length, Math.sin(time / 95 + i * 0.8) * 5);
             ctx.stroke();
+            
+            // 触手の先端の不気味な肉芽
+            ctx.fillStyle = '#f472b6';
+            ctx.beginPath();
+            ctx.arc(-11 - length, Math.sin(time / 95 + i * 0.8) * 5, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+            
             ctx.restore();
           }
 
-          // 2. 異形の悪魔熊の巨体（濃い紫色〜茶褐色）
-          ctx.fillStyle = '#2e1065'; // 濃い紫色 (ダークパープル)
-          ctx.strokeStyle = '#581c1c'; // 赤黒い輪郭線
+          // 2. 実験体ゾンビベアの巨体（汚れた茶褐色、露出した筋肉、血まみれの傷）
+          ctx.fillStyle = '#5c2d17'; // 汚れた茶褐色
+          ctx.strokeStyle = '#311005'; // 赤黒い輪郭線
           ctx.lineWidth = 2.5;
           ctx.beginPath();
-          ctx.arc(-2, 0, 16, 0, Math.PI * 2); // 巨体化 (半径16)
+          ctx.arc(-2, 0, 16, 0, Math.PI * 2); // 巨体
           ctx.fill();
           ctx.stroke();
 
-          // 耳の描画 (悪魔風の尖った耳)
-          ctx.fillStyle = '#1e1b4b';
+          // 壊死した傷痕、露出したグレーの筋組織の描き込み
+          ctx.fillStyle = '#4b5563'; // 暗いグレーの壊死組織
+          ctx.beginPath();
+          ctx.arc(-6, -6, 4, 0, Math.PI * 2);
+          ctx.arc(-2, 7, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#991b1b'; // 傷口の暗い赤（血痕）
+          ctx.beginPath();
+          ctx.arc(-5, -6, 2.5, 0, Math.PI * 2);
+          ctx.arc(-2, 7, 2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 2.2. 鋭く血まみれの巨大な爪
+          ctx.strokeStyle = '#991b1b'; // 血の暗い赤
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(11, -8); ctx.lineTo(17, -10 + Math.sin(time / 110) * 1.5);
+          ctx.moveTo(12, 0); ctx.lineTo(19, Math.cos(time / 90) * 1.5);
+          ctx.moveTo(11, 8); ctx.lineTo(17, 10 + Math.sin(time / 110) * 1.5);
+          ctx.stroke();
+
+          ctx.fillStyle = '#dc2626'; // 鮮血
+          ctx.beginPath();
+          ctx.arc(17, -10 + Math.sin(time / 110) * 1.5, 1.2, 0, Math.PI * 2);
+          ctx.arc(19, Math.cos(time / 90) * 1.5, 1.2, 0, Math.PI * 2);
+          ctx.arc(17, 10 + Math.sin(time / 110) * 1.5, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 耳の描画（ボロボロの耳）
+          ctx.fillStyle = '#451a03';
           ctx.beginPath();
           ctx.arc(-5, -12, 4.5, 0, Math.PI * 2);
           ctx.arc(-5, 12, 4.5, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
+
+          // 2.5. 金属鋲（スタッズ）付きの暗青色の実験首輪
+          ctx.strokeStyle = '#1e3a8a'; // 暗青色
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.arc(2, 0, 16.5, -Math.PI / 2, Math.PI / 2);
+          ctx.stroke();
+
+          // スタッズの金属光沢（シルバーの点）
+          ctx.fillStyle = '#cbd5e1';
+          ctx.beginPath();
+          ctx.arc(4, -8, 1.2, 0, Math.PI * 2);
+          ctx.arc(5.2, 0, 1.2, 0, Math.PI * 2);
+          ctx.arc(4, 8, 1.2, 0, Math.PI * 2);
+          ctx.fill();
 
           // 3. 咆哮・闇の霧ブレスエフェクト (CHASE状態で周期的に口から紫オーラを吐き出す)
           if (bear.state === 'chase') {
@@ -1833,29 +1927,80 @@ export class GameEngine {
             }
           }
 
-          // 4. 赤く怪しく光る目
-          ctx.fillStyle = '#ef4444';
-          ctx.beginPath();
-          ctx.arc(7, -4.5, 3, 0, Math.PI * 2);
-          ctx.arc(7, 4.5, 3, 0, Math.PI * 2);
-          ctx.fill();
+          // 3.5. 裂けた口、むき出しの牙、したたる不気味な唾液（ヨダレ）
+          ctx.save();
+          ctx.translate(11, 0);
           
-          // 目に怪しい光沢（ハイライト）
+          // 口の赤黒い腔内
+          ctx.fillStyle = '#450a0a';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 4.5, 6, 0, -Math.PI / 2, Math.PI / 2);
+          ctx.fill();
+
+          // 鋭い牙（白い極小三角形）
+          ctx.fillStyle = '#f8fafc';
+          ctx.beginPath();
+          ctx.moveTo(1, -4.5); ctx.lineTo(3.5, -3); ctx.lineTo(1.5, -1.5);
+          ctx.moveTo(1.5, -3); ctx.lineTo(4, -1.5); ctx.lineTo(1.5, 0);
+          ctx.moveTo(1.5, 0); ctx.lineTo(4, 1.5); ctx.lineTo(1.5, 3);
+          ctx.moveTo(1, 4.5); ctx.lineTo(3.5, 3); ctx.lineTo(1.5, 1.5);
+          ctx.fill();
+
+          // したたるねばねばしたヨダレ
+          const salivaLen = 5 + Math.sin(time / 110) * 3;
+          ctx.strokeStyle = 'rgba(234, 179, 8, 0.7)'; // 黄ばんだ粘液
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(2, 2.5);
+          ctx.lineTo(2 + salivaLen * 0.4, 4 + Math.sin(time / 90) * 1.5);
+          ctx.lineTo(2 + salivaLen, 6 + Math.cos(time / 70) * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          // 4. 右目は黒い空洞（血涙が流れる）、左目は黄色く濁って光る
+          // 右目 (上側: y = -4.5) - 黒い空洞
+          ctx.fillStyle = '#050505';
+          ctx.beginPath();
+          ctx.arc(8, -4.5, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 垂れ落ちる黒い液
+          ctx.strokeStyle = '#050505';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(8, -4.5);
+          ctx.lineTo(2, -7 - Math.sin(time / 200) * 1.5);
+          ctx.stroke();
+
+          // 左目 (下側: y = 4.5) - 黄色く光る
+          ctx.fillStyle = '#facc15'; // 黄色
+          ctx.beginPath();
+          ctx.arc(8, 4.5, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 濁った瞳孔
+          ctx.fillStyle = '#78350f';
+          ctx.beginPath();
+          ctx.arc(8.5, 4.5, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // ハイライト
           ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          ctx.arc(8, -4.5, 0.8, 0, Math.PI * 2);
-          ctx.arc(8, 4.5, 0.8, 0, Math.PI * 2);
+          ctx.arc(9.2, 3.8, 0.7, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.restore();
 
           // 5. ステータステキスト（頭上）
-          ctx.save();
-          ctx.fillStyle = '#ef4444';
-          ctx.font = 'bold 8.5px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(bear.state === 'chase' ? '👿 CHASE' : isBellActive ? '🔔 鈴惑わし' : '🌲 WANDER', brx + shake, bry - 22);
-          ctx.restore();
+          textDrawQueue.push({
+            text: bear.state === 'chase' ? '👿 CHASE' : isBellActive ? '🔔 鈴惑わし' : '🌲 WANDER',
+            x: brx + shake,
+            y: bry - 22,
+            font: 'bold 9.5px monospace',
+            color: '#ef4444',
+            align: 'center'
+          });
         }
       }
     });
@@ -1898,5 +2043,52 @@ export class GameEngine {
       ctx.drawImage(maskCanvas, 0, 0);
     }
     ctx.restore();
+
+    // 究極のドット絵化（480x272の低解像度に縮小し、画像補間を無効にして960x544に2倍拡大転送）
+    if (this.offscreenCanvas && this.offscreenCtx) {
+      // 1. メインCanvasの描画を480x272に縮小
+      this.offscreenCtx.clearRect(0, 0, 480, 272);
+      this.offscreenCtx.drawImage(this.canvas, 0, 0, 960, 544, 0, 0, 480, 272);
+
+      // 2. メインCanvasを全クリア
+      ctx.clearRect(0, 0, 960, 544);
+
+      // 3. 拡大時の補完処理（バイリニアなど）を無効にしてニアレストネイバー（ジャギーを綺麗に残す）に設定
+      ctx.imageSmoothingEnabled = false;
+      (ctx as any).mozImageSmoothingEnabled = false;
+      (ctx as any).webkitImageSmoothingEnabled = false;
+      (ctx as any).msImageSmoothingEnabled = false;
+
+      // 4. 2倍に引き伸ばして描き直す
+      ctx.drawImage(this.offscreenCanvas, 0, 0, 480, 272, 0, 0, 960, 544);
+    }
+
+    // 5. 探索マップ上のテキストを高解像度（アンチエイリアスありのクリアなフォント、黒縁取り付き）で上乗せ描画
+    if (textDrawQueue.length > 0) {
+      ctx.save();
+      // 高精細テキストにするため、画像補間を通常（滑らか）に戻す
+      ctx.imageSmoothingEnabled = true;
+      (ctx as any).mozImageSmoothingEnabled = true;
+      (ctx as any).webkitImageSmoothingEnabled = true;
+      (ctx as any).msImageSmoothingEnabled = true;
+
+      // シャドウ設定を一度クリア
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+
+      textDrawQueue.forEach(q => {
+        ctx.fillStyle = q.color;
+        ctx.font = q.font;
+        ctx.textAlign = q.align;
+        
+        // 視認性を劇的に向上させるため、文字の周りに黒い縁取り（袋文字）をクオリティ高く描画
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(q.text, q.x, q.y);
+        ctx.fillText(q.text, q.x, q.y);
+      });
+      ctx.restore();
+    }
   }
 }
