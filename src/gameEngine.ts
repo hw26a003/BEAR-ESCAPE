@@ -25,6 +25,17 @@ export interface Survivor {
   hint: string;
 }
 
+export interface Bear {
+  id: number;
+  x: number;
+  y: number;
+  state: 'wander' | 'chase';
+  wanderDirX: number;
+  wanderDirY: number;
+  wanderTimer: number;
+  speed: number;
+}
+
 export interface EngineCallbacks {
   onStaminaChange: (val: number) => void;
   onStaminaExhausted: (exhausted: boolean) => void;
@@ -66,6 +77,7 @@ export class GameEngine {
   public exitY = 0;
 
   // クマ
+  public bears: Bear[] = [];
   public bearX = 0;
   public bearY = 0;
   public bearState: 'wander' | 'chase' = 'wander';
@@ -312,22 +324,47 @@ export class GameEngine {
     this.exitX = ex;
     this.exitY = ey;
 
-    // 5. クマ (1体): プレイヤーから最小3600px〜最大7500px離す
-    let bearX = 0, bearY = 0;
-    for (let i = 0; i < 500; i++) {
-      const rx = 500 + Math.random() * 8600;
-      const ry = 500 + Math.random() * 4440;
-      if (checkPositionSafe(rx, ry, 25, 3600, 7500, true)) {
-        bearX = rx;
-        bearY = ry;
-        break;
+    // 5. クマ (5体): プレイヤーから最小3600px〜最大7500px離す
+    this.bears = [];
+    for (let k = 0; k < 5; k++) {
+      let bx = 0, by = 0;
+      for (let i = 0; i < 500; i++) {
+        const rx = 500 + Math.random() * 8600;
+        const ry = 500 + Math.random() * 4440;
+        if (checkPositionSafe(rx, ry, 25, 3600, 7500, true)) {
+          let tooClose = false;
+          for (const b of this.bears) {
+            if (Math.sqrt((rx - b.x) ** 2 + (ry - b.y) ** 2) < 400) {
+              tooClose = true;
+              break;
+            }
+          }
+          if (!tooClose) {
+            bx = rx;
+            by = ry;
+            break;
+          }
+        }
       }
+      if (bx === 0) {
+        bx = 1200 + k * 1600;
+        by = 3800 - (k % 3) * 1000;
+      }
+      this.bears.push({
+        id: k,
+        x: bx,
+        y: by,
+        state: 'wander',
+        wanderDirX: 1,
+        wanderDirY: 0,
+        wanderTimer: 0,
+        speed: 1.8 + Math.random() * 0.4 // 移動速度を少し落とす (1.8〜2.2)
+      });
     }
-    if (bearX === 0) { bearX = 1600; bearY = 3800; }
-    this.bearX = bearX;
-    this.bearY = bearY;
-    this.bearState = 'wander';
-    this.bearWanderTimer = 0;
+    // 後方互換・代表同期
+    this.bearX = this.bears[0].x;
+    this.bearY = this.bears[0].y;
+    this.bearState = this.bears[0].state;
 
     this.isInitialized = true;
 
@@ -338,6 +375,17 @@ export class GameEngine {
 
   // スプレーによるワープ (画面7枚分 ≒ 2100px 離れた位置にリスポーン)
   public respawnBearAway() {
+    // プレイヤーに最も近いクマを特定してそれを遠くに飛ばす
+    let closestBear = this.bears[0];
+    let minDist = 99999;
+    for (const b of this.bears) {
+      const d = Math.sqrt((b.x - this.playerX) ** 2 + (b.y - this.playerY) ** 2);
+      if (d < minDist) {
+        minDist = d;
+        closestBear = b;
+      }
+    }
+
     let found = false;
     for (let i = 0; i < 500; i++) {
       // プレイヤーから約2100px〜3000pxの距離
@@ -356,34 +404,69 @@ export class GameEngine {
           }
         }
         if (!overlap) {
-          this.bearX = tx;
-          this.bearY = ty;
-          this.bearState = 'wander';
-          this.bearWanderTimer = 0;
+          closestBear.x = tx;
+          closestBear.y = ty;
+          closestBear.state = 'wander';
+          closestBear.wanderTimer = 180; // 3秒間立ち止まる
           found = true;
           break;
         }
       }
     }
     if (!found) {
-      // フォールバック
-      this.bearX = (this.playerX + 2100) % 9600;
-      this.bearY = (this.playerY + 2100) % 5440;
+      closestBear.x = (this.playerX + 2100) % 9600;
+      closestBear.y = (this.playerY + 2100) % 5440;
+      closestBear.state = 'wander';
+      closestBear.wanderTimer = 180;
     }
 
-    this.bearState = 'wander';
-    this.bearWanderTimer = 180; // 3秒間立ち止まる
     this.bellActiveTimer = 0; // 鈴無効化をリセット
     this.syncAllStatesToReact();
   }
 
-  // 鈴の使用
+  // 鈴の使用 (すべてのクマをプレイヤーから画面7枚分 ≒ 2100px 以上離す)
   public useBell() {
     if (this.bellCount <= 0 || this.bellActiveTimer > 0) return;
     this.bellCount -= 1;
     this.bellActiveTimer = 600; // 10秒 (600フレーム@60fps)
+
+    // すべてのクマをプレイヤーから画面7枚分以上(最低2100px)離す
+    for (const b of this.bears) {
+      let found = false;
+      for (let i = 0; i < 500; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2100 + Math.random() * 2000; // 2100px〜4100px離す
+        const tx = this.playerX + Math.cos(angle) * dist;
+        const ty = this.playerY + Math.sin(angle) * dist;
+
+        if (tx > 150 && tx < 9450 && ty > 150 && ty < 5290) {
+          let overlap = false;
+          for (const obs of this.obstacles) {
+            if (Math.sqrt((tx - obs.x) ** 2 + (ty - obs.y) ** 2) < obs.r + 40) {
+              overlap = true;
+              break;
+            }
+          }
+          if (!overlap) {
+            b.x = tx;
+            b.y = ty;
+            b.state = 'wander';
+            b.wanderTimer = 120; // 2秒間立ち止まる
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) {
+        b.x = (this.playerX + 2500) % 9600;
+        b.y = (this.playerY + 2500) % 5440;
+        b.state = 'wander';
+        b.wanderTimer = 120;
+      }
+    }
+
     this.callbacks.onItemsChange({ map: this.hasMap, bell: this.bellCount, spray: this.sprayCount });
-    this.callbacks.onPopupMessage("🔔 鈴を鳴らした！10秒間、クマがあなたを見失う。");
+    this.callbacks.onPopupMessage("🔔 鈴を鳴らした！10秒間、クマがあなたを見失う。すべてのクマが遠くに逃げ去った！");
   }
 
   // 1フレーム更新
@@ -444,7 +527,7 @@ export class GameEngine {
     this.callbacks.onRunningChange(this.isRunning);
 
     // プレイヤー移動速度
-    const speed = this.isRunning && isMoving ? 5.6 : 3.5;
+    const speed = this.isRunning && isMoving ? 4.5 : 2.8; // 速度を少し落とす (ダッシュ4.5, 通常2.8)
     let nextPlayerX = this.playerX;
     let nextPlayerY = this.playerY;
 
@@ -459,7 +542,7 @@ export class GameEngine {
       const odx = nextPlayerX - obs.x;
       const ody = nextPlayerY - obs.y;
       const dist = Math.sqrt(odx * odx + ody * ody);
-      const minDist = 15 + obs.r; // プレイヤー半径15
+      const minDist = 18 + obs.r; // プレイヤー半径18 (表示拡大に合わせて調整)
       if (dist < minDist) {
         const overlap = minDist - dist;
         nextPlayerX += (odx / dist) * overlap;
@@ -471,119 +554,148 @@ export class GameEngine {
     this.playerX = Math.max(15, Math.min(9585, nextPlayerX));
     this.playerY = Math.max(15, Math.min(5425, nextPlayerY));
 
-    // 4. クマの移動AI
-    let bdx = this.playerX - this.bearX;
-    let bdy = this.playerY - this.bearY;
-    let distToPlayer = Math.sqrt(bdx * bdx + bdy * bdy);
-
+    // 4. クマの移動AI (3体それぞれ独立して更新)
     const isBellActive = this.bellActiveTimer > 0;
+    let closestDist = 99999;
+    let anyBearInCam = false;
 
-    // クマが追尾する条件: 鈴が有効でなく、かつプレイヤーが視界内（600px以内）にいる時
-    if (isBellActive || distToPlayer > 600) {
-      // 徘徊状態 (Wander)
-      this.bearState = 'wander';
-      this.bearWanderTimer -= 1;
-      if (this.bearWanderTimer <= 0) {
-        const angle = Math.random() * Math.PI * 2;
-        this.bearWanderDirX = Math.cos(angle);
-        this.bearWanderDirY = Math.sin(angle);
-        this.bearWanderTimer = 90 + Math.floor(Math.random() * 120); // 1.5〜3.5秒
-      }
+    for (const bear of this.bears) {
+      let bdx = this.playerX - bear.x;
+      let bdy = this.playerY - bear.y;
+      let distToPlayer = Math.sqrt(bdx * bdx + bdy * bdy);
 
-      let nextBearX = this.bearX + this.bearWanderDirX * 1.5;
-      let nextBearY = this.bearY + this.bearWanderDirY * 1.5;
+      // クマが追尾する条件: 鈴が有効でなく、かつプレイヤーが視界内（600px以内）にいる時
+      if (isBellActive || distToPlayer > 600) {
+        // 徘徊状態 (Wander)
+        bear.state = 'wander';
+        bear.wanderTimer -= 1;
+        if (bear.wanderTimer <= 0) {
+          const angle = Math.random() * Math.PI * 2;
+          bear.wanderDirX = Math.cos(angle);
+          bear.wanderDirY = Math.sin(angle);
+          bear.wanderTimer = 90 + Math.floor(Math.random() * 120); // 1.5〜3.5秒
+        }
 
-      // コリジョン判定（クマ徘徊）
-      let coll = false;
-      for (const obs of this.obstacles) {
-        const odx = nextBearX - obs.x;
-        const ody = nextBearY - obs.y;
-        const dist = Math.sqrt(odx * odx + ody * ody);
-        const minDist = 20 + obs.r; // クマ半径20
-        if (dist < minDist) {
-          const overlap = minDist - dist;
-          nextBearX += (odx / dist) * overlap;
-          nextBearY += (ody / dist) * overlap;
+        let nextBearX = bear.x + bear.wanderDirX * 1.0; // 徘徊速度を少し落とす
+        let nextBearY = bear.y + bear.wanderDirY * 1.0;
+
+        // コリジョン判定（クマ徘徊）
+        let coll = false;
+        for (const obs of this.obstacles) {
+          const odx = nextBearX - obs.x;
+          const ody = nextBearY - obs.y;
+          const dist = Math.sqrt(odx * odx + ody * ody);
+          const minDist = 25 + obs.r; // クマ半径25 (表示拡大に合わせて調整)
+          if (dist < minDist) {
+            const overlap = minDist - dist;
+            nextBearX += (odx / dist) * overlap;
+            nextBearY += (ody / dist) * overlap;
+            coll = true;
+          }
+        }
+        if (nextBearX < 20 || nextBearX > 9580 || nextBearY < 20 || nextBearY > 5420) {
           coll = true;
         }
-      }
-      if (nextBearX < 20 || nextBearX > 9580 || nextBearY < 20 || nextBearY > 5420) {
-        coll = true;
-      }
-      if (coll) {
-        this.bearWanderTimer = 0; // すぐに逆方向転換
-      }
+        if (coll) {
+          bear.wanderTimer = 0; // すぐに逆方向転換
+        }
 
-      this.bearX = Math.max(20, Math.min(9580, nextBearX));
-      this.bearY = Math.max(20, Math.min(5420, nextBearY));
-    } else {
-      // 追跡状態 (Chase) - 障害物迂回ステアリング
-      this.bearState = 'chase';
-      let bvx = bdx / distToPlayer;
-      let bvy = bdy / distToPlayer;
+        bear.x = Math.max(20, Math.min(9580, nextBearX));
+        bear.y = Math.max(20, Math.min(5420, nextBearY));
+      } else {
+        // 追跡状態 (Chase) - 障害物迂回ステアリング
+        bear.state = 'chase';
+        let bvx = bdx / distToPlayer;
+        let bvy = bdy / distToPlayer;
 
-      // 120px先の障害物を予測検知
-      let mostThreatening: Obstacle | null = null;
-      let minObsDist = 99999;
+        // 120px先の障害物を予測検知
+        let mostThreatening: Obstacle | null = null;
+        let minObsDist = 99999;
 
-      for (const obs of this.obstacles) {
-        const odx = obs.x - this.bearX;
-        const ody = obs.y - this.bearY;
-        const obsDist = Math.sqrt(odx * odx + ody * ody);
-        if (obsDist < 150) {
-          const dot = odx * bvx + ody * bvy;
-          if (dot > 0) { // クマの進行方向前方にある
-            const projX = this.bearX + bvx * dot;
-            const projY = this.bearY + bvy * dot;
-            const lateralDist = Math.sqrt((projX - obs.x) ** 2 + (projY - obs.y) ** 2);
-            if (lateralDist < obs.r + 30) {
-              if (obsDist < minObsDist) {
-                minObsDist = obsDist;
-                mostThreatening = obs;
+        for (const obs of this.obstacles) {
+          const odx = obs.x - bear.x;
+          const ody = obs.y - bear.y;
+          const obsDist = Math.sqrt(odx * odx + ody * ody);
+          if (obsDist < 150) {
+            const dot = odx * bvx + ody * bvy;
+            if (dot > 0) { // クマの進行方向前方にある
+              const projX = bear.x + bvx * dot;
+              const projY = bear.y + bvy * dot;
+              const lateralDist = Math.sqrt((projX - obs.x) ** 2 + (projY - obs.y) ** 2);
+              if (lateralDist < obs.r + 30) {
+                if (obsDist < minObsDist) {
+                  minObsDist = obsDist;
+                  mostThreatening = obs;
+                }
               }
             }
           }
         }
-      }
 
-      // 回避力をステアリングに加算
-      if (mostThreatening) {
-        const avoidDx = this.bearX - mostThreatening.x;
-        const avoidDy = this.bearY - mostThreatening.y;
-        const avoidLen = Math.sqrt(avoidDx * avoidDx + avoidDy * avoidDy);
+        // 回避力をステアリングに加算
+        if (mostThreatening) {
+          const avoidDx = bear.x - mostThreatening.x;
+          const avoidDy = bear.y - mostThreatening.y;
+          const avoidLen = Math.sqrt(avoidDx * avoidDx + avoidDy * avoidDy);
 
-        // 進行ベクトルと回避ベクトルをブレンド (40% vs 60%)
-        bvx = bvx * 0.4 + (avoidDx / avoidLen) * 0.6;
-        bvy = bvy * 0.4 + (avoidDy / avoidLen) * 0.6;
+          // 進行ベクトルと回避ベクトルをブレンド (40% vs 60%)
+          bvx = bvx * 0.4 + (avoidDx / avoidLen) * 0.6;
+          bvy = bvy * 0.4 + (avoidDy / avoidLen) * 0.6;
 
-        const totalLen = Math.sqrt(bvx * bvx + bvy * bvy);
-        bvx /= totalLen;
-        bvy /= totalLen;
-      }
-
-      let nextBearX = this.bearX + bvx * this.bearSpeed;
-      let nextBearY = this.bearY + bvy * this.bearSpeed;
-
-      // 直接衝突押し戻し（すり抜け防御）
-      for (const obs of this.obstacles) {
-        const odx = nextBearX - obs.x;
-        const ody = nextBearY - obs.y;
-        const dist = Math.sqrt(odx * odx + ody * ody);
-        const minDist = 20 + obs.r;
-        if (dist < minDist) {
-          const overlap = minDist - dist;
-          nextBearX += (odx / dist) * overlap;
-          nextBearY += (ody / dist) * overlap;
+          const totalLen = Math.sqrt(bvx * bvx + bvy * bvy);
+          bvx /= totalLen;
+          bvy /= totalLen;
         }
+
+        let nextBearX = bear.x + bvx * bear.speed;
+        let nextBearY = bear.y + bvy * bear.speed;
+
+        // 直接衝突押し戻し（すり抜け防御）
+        for (const obs of this.obstacles) {
+          const odx = nextBearX - obs.x;
+          const ody = nextBearY - obs.y;
+          const dist = Math.sqrt(odx * odx + ody * ody);
+          const minDist = 25 + obs.r; // クマ半径25
+          if (dist < minDist) {
+            const overlap = minDist - dist;
+            nextBearX += (odx / dist) * overlap;
+            nextBearY += (ody / dist) * overlap;
+          }
+        }
+
+        bear.x = Math.max(20, Math.min(9580, nextBearX));
+        bear.y = Math.max(20, Math.min(5420, nextBearY));
       }
 
-      this.bearX = Math.max(20, Math.min(9580, nextBearX));
-      this.bearY = Math.max(20, Math.min(5420, nextBearY));
+      const d = Math.sqrt((this.playerX - bear.x) ** 2 + (this.playerY - bear.y) ** 2);
+      if (d < closestDist) {
+        closestDist = d;
+      }
+
+      // クマが画面内(960x544)にいるか判定 (カメラ座標基準)
+      const inCamX = bear.x >= this.cameraX && bear.x <= this.cameraX + 960;
+      const inCamY = bear.y >= this.cameraY && bear.y <= this.cameraY + 544;
+      if (inCamX && inCamY && !isBellActive) {
+        anyBearInCam = true;
+      }
     }
 
+    // 代表同期 (最も近いクマをベースにする。戦闘等への影響を無くすため)
+    let representativeBear = this.bears[0];
+    let minD = 99999;
+    for (const b of this.bears) {
+      const d = Math.sqrt((b.x - this.playerX) ** 2 + (b.y - this.playerY) ** 2);
+      if (d < minD) {
+        minD = d;
+        representativeBear = b;
+      }
+    }
+    this.bearX = representativeBear.x;
+    this.bearY = representativeBear.y;
+    this.bearState = representativeBear.state;
+
     // 5. プレイヤーとクマの接触判定 (戦闘移行)
-    const currentBearDist = Math.sqrt((this.playerX - this.bearX) ** 2 + (this.playerY - this.bearY) ** 2);
-    if (currentBearDist <= 35) {
+    if (closestDist <= 42) {
       this.callbacks.onEncounter();
       return;
     }
@@ -607,12 +719,8 @@ export class GameEngine {
     this.cameraY = Math.max(0, Math.min(5440 - 544, this.cameraY));
 
     // 10. React通知 (距離・接近・バッテリー)
-    this.callbacks.onBearDistanceChange(Math.round(currentBearDist));
-    
-    // クマが画面内(960x544)にいるか判定 (カメラ座標基準)
-    const inCamX = this.bearX >= this.cameraX && this.bearX <= this.cameraX + 960;
-    const inCamY = this.bearY >= this.cameraY && this.bearY <= this.cameraY + 544;
-    this.callbacks.onBearOnScreenChange(inCamX && inCamY && !isBellActive);
+    this.callbacks.onBearDistanceChange(Math.round(closestDist));
+    this.callbacks.onBearOnScreenChange(anyBearInCam);
     this.callbacks.onBatteryChange(Math.ceil(this.batterySeconds / 60));
   }
 
@@ -623,14 +731,22 @@ export class GameEngine {
     this.callbacks.onRunningChange(this.isRunning);
     this.callbacks.onBatteryChange(Math.ceil(this.batterySeconds / 60));
     
-    const bdx = this.playerX - this.bearX;
-    const bdy = this.playerY - this.bearY;
-    const dist = Math.round(Math.sqrt(bdx * bdx + bdy * bdy));
-    this.callbacks.onBearDistanceChange(dist);
-
-    const inCamX = this.bearX >= this.cameraX && this.bearX <= this.cameraX + 960;
-    const inCamY = this.bearY >= this.cameraY && this.bearY <= this.cameraY + 544;
-    this.callbacks.onBearOnScreenChange(inCamX && inCamY && this.bellActiveTimer <= 0);
+    let closestDist = 99999;
+    let anyBearInCam = false;
+    for (const bear of this.bears) {
+      const d = Math.sqrt((bear.x - this.playerX) ** 2 + (bear.y - this.playerY) ** 2);
+      if (d < closestDist) {
+        closestDist = d;
+      }
+      const inCamX = bear.x >= this.cameraX && bear.x <= this.cameraX + 960;
+      const inCamY = bear.y >= this.cameraY && bear.y <= this.cameraY + 544;
+      if (inCamX && inCamY && this.bellActiveTimer <= 0) {
+        anyBearInCam = true;
+      }
+    }
+    
+    this.callbacks.onBearDistanceChange(Math.round(closestDist));
+    this.callbacks.onBearOnScreenChange(anyBearInCam);
 
     this.callbacks.onItemsChange({ map: this.hasMap, bell: this.bellCount, spray: this.sprayCount });
     this.callbacks.onSurvivorsChange([...this.savedList]);
@@ -942,56 +1058,216 @@ export class GameEngine {
       ctx.fill();
     }
 
-    // プレイヤー本体 (ダッシュ中はオレンジ、通常は青)
-    ctx.fillStyle = this.isRunning ? '#c2410c' : '#1d4ed8';
+    // プレイヤー（SCARED TRAVELER）の精巧な描画
+    const pAngle = Math.atan2(this.playerDirY, this.playerDirX);
+    const isMoving = Math.abs(this.playerVx) > 0.1 || Math.abs(this.playerVy) > 0.1;
+    const legSwing = isMoving ? Math.sin(performance.now() / 60) * 4 : 0;
+    const staminaRatio = this.stamina / 100;
+
+    ctx.save();
+    ctx.translate(prx, pry);
+    ctx.scale(1.25, 1.25);
+    ctx.rotate(pAngle);
+
+    // 1. リュックサック (茶色) - 背中側 (左側)
+    ctx.fillStyle = '#78350f'; // 茶色
+    ctx.strokeStyle = '#451a03';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(prx, pry, 11, 0, Math.PI * 2);
+    ctx.roundRect(-13, -5, 5, 10, 2);
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // 向きポインター
+    // 2. 体/ジャケット (緑色)
+    ctx.fillStyle = this.isRunning ? '#15803d' : '#166534'; // 走るとやや明るい緑、通常は深緑
+    ctx.strokeStyle = '#14532d';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(-2, 0, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. 茶色のズボン/足のアニメーション
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-7, -7 + legSwing, 3, 2.5);
+    ctx.fillRect(-7, 4.5 - legSwing, 3, 2.5);
+
+    // 4. 頭/肌 (恐怖で青ざめている: スタミナが低い、または危険時に青っぽく)
+    const faceColor = staminaRatio < 0.35 ? '#93c5fd' : '#fed7aa'; // 青白い or 薄橙
+    ctx.fillStyle = faceColor;
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(3, 0, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 5. 乱れた茶髪 (後ろ・横髪)
+    ctx.fillStyle = '#451a03'; // 濃い茶色
+    ctx.beginPath();
+    ctx.arc(-1, 0, 7.5, Math.PI / 2, Math.PI * 1.5);
+    // 乱れた前髪の房
+    ctx.lineTo(5, -4);
+    ctx.lineTo(3, -1);
+    ctx.lineTo(6, 0);
+    ctx.lineTo(3, 1.5);
+    ctx.lineTo(5, 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // 6. 怯えた表情 (見開いた目、冷や汗)
+    // 白目 (大きく見開く)
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(prx + this.playerDirX * 7, pry + this.playerDirY * 7, 2.5, 0, Math.PI * 2);
+    ctx.arc(4, -2.5, 2, 0, Math.PI * 2);
+    ctx.arc(4, 2.5, 2, 0, Math.PI * 2);
     ctx.fill();
+    // 黒目 (極小にして恐怖感を演出)
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(4.5, -2.5, 0.7, 0, Math.PI * 2);
+    ctx.arc(4.5, 2.5, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 冷や汗 (水色)
+    if (staminaRatio < 0.5) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(2, -4, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 7. 手/懐中電灯
+    if (this.flashlightOn) {
+      ctx.fillStyle = '#4b5563'; // 懐中電灯グレー
+      ctx.fillRect(5, 2.5, 5, 2.5);
+      ctx.fillStyle = '#fef08a'; // 黄色いレンズ
+      ctx.fillRect(10, 2.5, 1.5, 2.5);
+    }
+
+    ctx.restore();
     ctx.restore();
 
-    // 6. クマの描画
-    const brx = this.bearX - camX;
-    const bry = this.bearY - camY;
-    if (brx > -35 && brx < 995 && bry > -35 && bry < 579) {
-      const isBellActive = this.bellActiveTimer > 0;
-      const distToPlayer = Math.sqrt((this.playerX - this.bearX) ** 2 + (this.playerY - this.bearY) ** 2);
-      const isIlluminated = this.flashlightOn && distToPlayer < this.getLightRadius();
+    // 6. クマの描画 (3体すべて描画：DEMONIC BEAR仕様)
+    this.bears.forEach(bear => {
+      const brx = bear.x - camX;
+      const bry = bear.y - camY;
+      if (brx > -35 && brx < 995 && bry > -35 && bry < 579) {
+        const isBellActive = this.bellActiveTimer > 0;
+        const distToPlayer = Math.sqrt((this.playerX - bear.x) ** 2 + (this.playerY - bear.y) ** 2);
+        const isIlluminated = this.flashlightOn && distToPlayer < this.getLightRadius();
 
-      if (distToPlayer < 200 || isIlluminated) {
-        ctx.save();
-        const shake = this.bearState === 'chase' ? Math.sin(performance.now() / 35) * 1.5 : 0;
+        if (distToPlayer < 200 || isIlluminated) {
+          ctx.save();
+          const shake = bear.state === 'chase' ? Math.sin(performance.now() / 35) * 1.5 : 0;
+          const time = performance.now();
+          
+          // クマの向いている角度を計算
+          let bearAngle = 0;
+          if (bear.state === 'chase') {
+            bearAngle = Math.atan2(this.playerY - bear.y, this.playerX - bear.x);
+          } else {
+            bearAngle = Math.atan2(bear.wanderDirY, bear.wanderDirX);
+          }
 
-        ctx.fillStyle = '#170c0c'; // 熊のブラック
-        ctx.beginPath();
-        ctx.arc(brx + shake, bry, 15, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#581c1c';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+          // 不気味な闇のオーラ（周囲に漂う不気味なぼかし円グラデーション）
+          const auraGrad = ctx.createRadialGradient(brx + shake, bry, 12.5, brx + shake, bry, 44);
+          const auraColor = bear.state === 'chase' ? 'rgba(220, 38, 38, 0.18)' : 'rgba(147, 51, 234, 0.15)';
+          auraGrad.addColorStop(0, auraColor);
+          auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = auraGrad;
+          ctx.beginPath();
+          ctx.arc(brx + shake, bry, 44, 0, Math.PI * 2);
+          ctx.fill();
 
-        // 鬼気迫る赤い目
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.arc(brx - 4 + shake, bry - 3, 2.5, 0, Math.PI * 2);
-        ctx.arc(brx + 4 + shake, bry - 3, 2.5, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.translate(brx + shake, bry);
+          ctx.scale(1.25, 1.25); // クマを1.25倍に拡大
+          ctx.rotate(bearAngle);
 
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 8px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(this.bearState === 'chase' ? 'CHASE' : isBellActive ? '鈴惑わし' : 'WANDER', brx + shake, bry - 18);
-        ctx.restore();
+          // 1. 背中の金色の突起（棘・スパイク）- 背中側（左側・進行方向の逆）に複数放射
+          const spikeCount = 5;
+          const isSpikeGlow = bear.state === 'chase' && (Math.floor(time / 150) % 2 === 0);
+          ctx.fillStyle = isSpikeGlow ? '#c084fc' : '#eab308'; // 追跡中は紫に明滅、通常は金色
+          ctx.strokeStyle = isSpikeGlow ? '#581c1c' : '#854d0e';
+          ctx.lineWidth = 1;
+          
+          for (let i = 0; i < spikeCount; i++) {
+            const angleOffset = -Math.PI * 0.65 + (i * (Math.PI * 1.3 / (spikeCount - 1))); // 後方180度に分散
+            ctx.save();
+            ctx.rotate(angleOffset);
+            ctx.beginPath();
+            ctx.moveTo(-11, 0);
+            ctx.lineTo(-21, -3.5);
+            ctx.lineTo(-15, -6.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // 2. 異形の悪魔熊の巨体（濃い紫色〜茶褐色）
+          ctx.fillStyle = '#2e1065'; // 濃い紫色 (ダークパープル)
+          ctx.strokeStyle = '#581c1c'; // 赤黒い輪郭線
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(-2, 0, 16, 0, Math.PI * 2); // 巨体化 (半径16)
+          ctx.fill();
+          ctx.stroke();
+
+          // 耳の描画 (悪魔風の尖った耳)
+          ctx.fillStyle = '#1e1b4b';
+          ctx.beginPath();
+          ctx.arc(-5, -12, 4.5, 0, Math.PI * 2);
+          ctx.arc(-5, 12, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // 3. 咆哮・闇の霧ブレスエフェクト (CHASE状態で周期的に口から紫オーラを吐き出す)
+          if (bear.state === 'chase') {
+            const breathCycle = (time / 800) % 1.0;
+            if (breathCycle < 0.45) {
+              ctx.save();
+              const breathSize = breathCycle * 28;
+              const breathOpacity = Math.max(0, 0.75 - breathCycle * 1.6);
+              const breathGrad = ctx.createRadialGradient(16, 0, 2, 16 + breathSize, 0, breathSize * 1.5);
+              breathGrad.addColorStop(0, `rgba(168, 85, 247, ${breathOpacity})`);
+              breathGrad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+              ctx.fillStyle = breathGrad;
+              ctx.beginPath();
+              ctx.arc(16 + breathSize / 2, 0, breathSize * 1.3, -Math.PI / 5, Math.PI / 5);
+              ctx.lineTo(16, 0);
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+
+          // 4. 赤く怪しく光る目
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(7, -4.5, 3, 0, Math.PI * 2);
+          ctx.arc(7, 4.5, 3, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // 目に怪しい光沢（ハイライト）
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(8, -4.5, 0.8, 0, Math.PI * 2);
+          ctx.arc(8, 4.5, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.restore();
+
+          // 5. ステータステキスト（頭上）
+          ctx.save();
+          ctx.fillStyle = '#ef4444';
+          ctx.font = 'bold 8.5px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(bear.state === 'chase' ? '👿 CHASE' : isBellActive ? '🔔 鈴惑わし' : '🌲 WANDER', brx + shake, bry - 22);
+          ctx.restore();
+        }
       }
-    }
+    });
 
     // 7. 懐中電灯による極限暗闇シャドウマスク (視界制限・明滅の再現)
     ctx.save();
