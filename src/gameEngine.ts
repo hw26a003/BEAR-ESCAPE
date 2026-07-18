@@ -66,6 +66,8 @@ export class GameEngine {
   public stamina = 100;
   public isStaminaExhausted = false;
   public isRunning = false;
+  public playerVx = 0;
+  public playerVy = 0;
   public batterySeconds = 600; // 10分
   public flashlightOn = true;
 
@@ -492,6 +494,8 @@ export class GameEngine {
     if (keys['d'] || keys['arrowright']) dx += 1;
 
     const isMoving = dx !== 0 || dy !== 0;
+    this.playerVx = dx;
+    this.playerVy = dy;
 
     // 移動方向のインジケータ更新
     if (isMoving) {
@@ -883,44 +887,256 @@ export class GameEngine {
           const bob = Math.sin(performance.now() / 180) * 3;
 
           if (item.type === 'map') {
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = '#fbbf24';
-            ctx.fillStyle = '#b45309';
-            ctx.fillRect(rx - 8, ry - 8 + bob, 16, 16);
-            ctx.strokeStyle = '#fbbf24';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(rx - 8, ry - 8 + bob, 16, 16);
-
-            ctx.fillStyle = '#fbbf24';
-            ctx.font = 'bold 10px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('M', rx, ry + 3 + bob);
-          } else if (item.type === 'bell') {
-            ctx.shadowBlur = 12;
+            // アンティークな「革張りのフィールドガイド（地図帳）」の精巧な描画
+            ctx.shadowBlur = 14;
             ctx.shadowColor = '#eab308';
-            ctx.fillStyle = '#ca8a04';
+
+            const bx = rx;
+            const by = ry + bob;
+
+            // 1. 本体の革張り表紙（ベース、斜めに置かれた雰囲気）
+            ctx.fillStyle = '#451a03'; // ダークブラウン
+            ctx.strokeStyle = '#1c1917';
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.arc(rx, ry + bob, 7, 0, Math.PI * 2);
+            ctx.roundRect(bx - 12, by - 8, 24, 16, 2);
             ctx.fill();
-            ctx.strokeStyle = '#eab308';
             ctx.stroke();
 
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 8px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('B', rx, ry + 3 + bob);
-          } else if (item.type === 'spray') {
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = '#f97316';
-            ctx.fillStyle = '#ea580c';
-            ctx.fillRect(rx - 6, ry - 9 + bob, 12, 18);
-            ctx.strokeStyle = '#fff';
-            ctx.strokeRect(rx - 6, ry - 9 + bob, 12, 18);
+            // 2. 本の厚み・ページ部分（右下・下部のベージュ色）
+            ctx.fillStyle = '#f5f5f4'; // ページ紙
+            ctx.fillRect(bx - 11, by + 6, 22, 2);
 
+            // 3. 深緑と真鍮の高級な装飾フレーム
+            ctx.fillStyle = '#14532d'; // 深緑
+            ctx.beginPath();
+            ctx.roundRect(bx - 10, by - 6, 20, 11, 1);
+            ctx.fill();
+
+            ctx.strokeStyle = '#ca8a04'; // ゴールド装飾線
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+
+            // 4. 地図面（古紙風のベージュ・薄黄色）
+            ctx.fillStyle = '#fef3c7'; // 古紙ベージュ
+            ctx.fillRect(bx - 8, by - 4, 13, 7);
+
+            // 地図の模様（川、森を模した青と緑のドット）
+            ctx.fillStyle = '#3b82f6'; // 川
+            ctx.fillRect(bx - 6, by - 2, 4, 1);
+            ctx.fillRect(bx - 3, by - 1, 3, 1);
+            ctx.fillStyle = '#22c55e'; // 森林
+            ctx.fillRect(bx + 1, by - 3, 2, 2);
+
+            // 5. 右上の丸型羅針盤（コンパス）
+            ctx.fillStyle = '#d97706'; // 真鍮ゴールド
+            ctx.beginPath();
+            ctx.arc(bx + 7, by - 3, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+
+            // 羅針盤の指針（黒い極小十字）
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 0.6;
+            ctx.beginPath();
+            ctx.moveTo(bx + 7, by - 4.5);
+            ctx.lineTo(bx + 7, by - 1.5);
+            ctx.moveTo(bx + 5.5, by - 3);
+            ctx.lineTo(bx + 8.5, by - 3);
+            ctx.stroke();
+
+            // 6. 左下のインク瓶と斜めに挿された金色の羽根ペン
+            // インク瓶（黒・ガラス）
+            ctx.fillStyle = '#1e293b';
+            ctx.strokeStyle = '#ca8a04';
+            ctx.lineWidth = 0.6;
+            ctx.beginPath();
+            ctx.roundRect(bx - 15, by + 3, 4, 4, 1);
+            ctx.fill();
+            ctx.stroke();
+
+            // 金色の羽根ペン（斜めに伸びる羽のドット）
+            ctx.strokeStyle = '#fbbf24'; // 羽のイエロー
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(bx - 13, by + 4);
+            ctx.lineTo(bx - 18, by - 2); // 斜め上へ
+            ctx.stroke();
+
+            ctx.fillStyle = '#f59e0b'; // 羽の飾り部分
+            ctx.beginPath();
+            ctx.moveTo(bx - 18, by - 2);
+            ctx.lineTo(bx - 20, by - 4);
+            ctx.lineTo(bx - 17, by - 3);
+            ctx.closePath();
+            ctx.fill();
+          } else if (item.type === 'bell') {
+            // アンティークな「結び紐付きの真鍮製・鐘型鈴」の精巧な描画
+            ctx.shadowBlur = 14;
+            ctx.shadowColor = '#fbbf24';
+
+            // 1. 上部：ロープ（結び紐・ベージュとブラウン）
+            ctx.strokeStyle = '#d97706'; // ロープブラウン
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(rx, ry - 18 + bob);
+            ctx.lineTo(rx, ry - 7 + bob);
+            ctx.stroke();
+
+            // ロープの結び目（ノット）
+            ctx.fillStyle = '#b45309';
+            ctx.strokeStyle = '#78350f';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.ellipse(rx, ry - 12 + bob, 3, 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // 2. 吊り下げ真鍮製リング
+            ctx.strokeStyle = '#ca8a04';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(rx, ry - 6 + bob, 3, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 3. 舌（振り子・クラッパー）※先に下に描画
+            ctx.strokeStyle = '#451a03';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(rx, ry + 8 + bob);
+            ctx.lineTo(rx, ry + 13 + bob);
+            ctx.stroke();
+
+            ctx.fillStyle = '#2e1065'; // 暗い鉄色
+            ctx.beginPath();
+            ctx.arc(rx, ry + 13 + bob, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 4. 鈴本体（鐘型）
+            ctx.beginPath();
+            ctx.moveTo(rx - 4, ry - 3 + bob);
+            // 左側の滑らかなふくらみ
+            ctx.bezierCurveTo(rx - 5, ry - 3 + bob, rx - 7, ry + 3 + bob, rx - 9, ry + 6 + bob);
+            // 左下の角（朝顔状の広がり）
+            ctx.quadraticCurveTo(rx - 9.5, ry + 8 + bob, rx - 8, ry + 8 + bob);
+            // 下部の広がり
+            ctx.lineTo(rx + 8, ry + 8 + bob);
+            // 右下の角
+            ctx.quadraticCurveTo(rx + 9.5, ry + 8 + bob, rx + 9, ry + 6 + bob);
+            // 右側の戻り
+            ctx.bezierCurveTo(rx + 7, ry + 3 + bob, rx + 5, ry - 3 + bob, rx + 4, ry - 3 + bob);
+            ctx.closePath();
+
+            // 真鍮・金色の金属グラデーション
+            const bellGrad = ctx.createLinearGradient(rx - 9, 0, rx + 9, 0);
+            bellGrad.addColorStop(0, '#78350f');   // 暗部
+            bellGrad.addColorStop(0.25, '#d97706'); // ブロンズ
+            bellGrad.addColorStop(0.5, '#fef08a');  // ハイライト
+            bellGrad.addColorStop(0.75, '#ca8a04'); // ゴールド
+            bellGrad.addColorStop(1, '#451a03');   // 影
+            ctx.fillStyle = bellGrad;
+            ctx.fill();
+
+            ctx.strokeStyle = '#854d0e';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            // 5. 表面の美しい装飾レリーフ（波文様）
+            ctx.strokeStyle = '#78350f';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(rx - 6.5, ry + 1 + bob);
+            ctx.quadraticCurveTo(rx - 3, ry - 1 + bob, rx, ry + 1 + bob);
+            ctx.quadraticCurveTo(rx + 3, ry + 3 + bob, rx + 6.5, ry + 1 + bob);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(rx - 7.5, ry + 4 + bob);
+            ctx.quadraticCurveTo(rx - 4, ry + 2 + bob, rx, ry + 4 + bob);
+            ctx.quadraticCurveTo(rx + 4, ry + 6 + bob, rx + 7.5, ry + 4 + bob);
+            ctx.stroke();
+          } else if (item.type === 'spray') {
+            // 本格的な白と赤のツートンカラー「工業用撃退スプレー缶」の精巧な描画
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = '#ef4444';
+
+            const topY = ry - 17 + bob; // スプレー缶全体の最頂部
+
+            // 1. ノズル部（最上部保護ハウジング：ダークグレー、およびレッドボタン）
+            ctx.fillStyle = '#374151'; // ダークグレー
+            ctx.strokeStyle = '#1f2937';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.roundRect(rx - 3.5, topY, 7, 5, 1);
+            ctx.fill();
+            ctx.stroke();
+
+            // レッドの噴射トリガーボタン（ノズル中央上部）
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(rx - 1.5, topY, 3, 2.5);
+
+            // 白色の極細ストロー/噴射管
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(rx, topY + 3);
+            ctx.lineTo(rx - 5, topY + 4);
+            ctx.stroke();
+
+            // 2. ショルダードーム（メタリックシルバーの肩部分）
+            const shoulderY = topY + 5;
+            const shoulderGrad = ctx.createLinearGradient(rx - 6, 0, rx + 6, 0);
+            shoulderGrad.addColorStop(0, '#9ca3af');
+            shoulderGrad.addColorStop(0.5, '#f3f4f6');
+            shoulderGrad.addColorStop(1, '#4b5563');
+            ctx.fillStyle = shoulderGrad;
+            ctx.strokeStyle = '#6b7280';
+            ctx.beginPath();
+            ctx.moveTo(rx - 6, shoulderY + 3);
+            ctx.quadraticCurveTo(rx - 4, shoulderY, rx - 3, shoulderY);
+            ctx.lineTo(rx + 3, shoulderY);
+            ctx.quadraticCurveTo(rx + 4, shoulderY, rx + 6, shoulderY + 3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 3. 缶の本体（円柱状。白と赤のツートンカラー）
+            const bodyY = shoulderY + 3;
+            const bodyH = 21;
+
+            // 缶ベース（白色）
+            ctx.fillStyle = '#f8fafc';
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(rx - 6, bodyY, 12, bodyH, [0, 0, 1, 1]);
+            ctx.fill();
+            ctx.stroke();
+
+            // メインの赤いラベル（中央部に帯状に配置）
+            const labelGrad = ctx.createLinearGradient(rx - 6, 0, rx + 6, 0);
+            labelGrad.addColorStop(0, '#991b1b');  // 濃い影
+            labelGrad.addColorStop(0.3, '#dc2626'); // 明るい赤
+            labelGrad.addColorStop(0.7, '#ef4444'); // ハイライト赤
+            labelGrad.addColorStop(1, '#7f1d1d');  // 影
+            ctx.fillStyle = labelGrad;
+            ctx.fillRect(rx - 6, bodyY + 2, 12, bodyH - 4);
+
+            // 「SPRAY」ロゴ（極小の白色フォントで缶身に描画）
+            ctx.save();
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 8px monospace';
+            ctx.font = 'bold 5px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('S', rx, ry + 3 + bob);
+            ctx.fillText('SPRAY', rx, bodyY + 9);
+            ctx.font = '4px sans-serif';
+            ctx.fillText('CAN', rx, bodyY + 14);
+            ctx.restore();
+
+            // 4. 底面の金属プレート
+            ctx.fillStyle = '#9ca3af';
+            ctx.fillRect(rx - 5, bodyY + bodyH, 10, 1);
           }
 
           // プレイヤーが近くにいる場合、操作案内テキストを表示
@@ -941,27 +1157,402 @@ export class GameEngine {
     this.survivors.forEach(surv => {
       const rx = surv.x - camX;
       const ry = surv.y - camY;
-      if (rx > -30 && rx < 990 && ry > -30 && ry < 574) {
-        ctx.fillStyle = surv.saved ? '#059669' : '#047857';
+      if (rx > -50 && rx < 1010 && ry > -50 && ry < 594) {
+        ctx.save();
+
+        // 呼吸の揺れ（ボビング）
+        const bob = Math.sin(performance.now() / 150 + surv.id * 5) * 1.2;
+        const bx = rx;
+        const by = ry;
+
+        // 視認性を良くするための周囲のグロー（救出状況に応じて色を変化）
+        ctx.shadowBlur = surv.saved ? 15 : 10;
+        ctx.shadowColor = surv.saved ? '#10b981' : '#dc2626';
+
+        // キャラクター固有の精巧なベクタードット絵描画
+        if (surv.id === 0) {
+          // ==================== 佐藤 (Sato) [ピンク髪・料理人] ====================
+          // 1. 体（水色ドレス）
+          ctx.fillStyle = '#60a5fa';
+          ctx.beginPath();
+          ctx.moveTo(bx - 7, by + 12);
+          ctx.lineTo(bx - 4, by - 2 + bob);
+          ctx.lineTo(bx + 4, by - 2 + bob);
+          ctx.lineTo(bx + 7, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          // 2. 白いエプロン
+          ctx.fillStyle = '#f8fafc';
+          ctx.beginPath();
+          ctx.moveTo(bx - 3.5, by + 1);
+          ctx.lineTo(bx + 3.5, by + 1);
+          ctx.lineTo(bx + 5, by + 12);
+          ctx.lineTo(bx - 5, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          // 3. 頭（肌色）
+          ctx.fillStyle = '#ffedd5';
+          ctx.beginPath();
+          ctx.arc(bx, by - 6 + bob, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 4. ピンクのふんわり髪
+          ctx.fillStyle = '#f472b6';
+          // 後ろ髪
+          ctx.beginPath();
+          ctx.arc(bx, by - 7 + bob, 6.5, 0, Math.PI * 2);
+          ctx.fill();
+          // サイドと前髪の膨らみ
+          ctx.beginPath();
+          ctx.arc(bx - 5, by - 5 + bob, 3.8, 0, Math.PI * 2);
+          ctx.arc(bx + 5, by - 5 + bob, 3.8, 0, Math.PI * 2);
+          ctx.arc(bx, by - 11 + bob, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 5. お顔の表情
+          ctx.fillStyle = '#fda4af'; // ほっぺのチーク
+          ctx.fillRect(bx - 3, by - 5 + bob, 1.2, 1);
+          ctx.fillRect(bx + 1.8, by - 5 + bob, 1.2, 1);
+          ctx.fillStyle = '#0f172a'; // 目
+          ctx.fillRect(bx - 2, by - 7 + bob, 1.2, 1.2);
+          ctx.fillRect(bx + 1, by - 7 + bob, 1.2, 1.2);
+
+          // 6. 持ち物
+          // 右手：茶色い木製の大きなスプーン
+          ctx.strokeStyle = '#b45309';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(bx - 3, by + 4);
+          ctx.lineTo(bx - 11, by - 6 + bob);
+          ctx.stroke();
+          ctx.fillStyle = '#d97706';
+          ctx.beginPath();
+          ctx.ellipse(bx - 12, by - 7 + bob, 3, 2, Math.PI / 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 左手：銅色の丸いコッペル鍋を提げている
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(bx + 3, by + 4);
+          ctx.lineTo(bx + 8, by + 8);
+          ctx.stroke();
+          ctx.fillStyle = '#ca8a04'; // コッパーブロンズ
+          ctx.beginPath();
+          ctx.roundRect(bx + 5, by + 8, 7, 5, 1.5);
+          ctx.fill();
+          ctx.fillStyle = '#854d0e';
+          ctx.fillRect(bx + 4.5, by + 7.5, 8, 1);
+
+        } else if (surv.id === 1) {
+          // ==================== 鈴木 (Suzuki) [修道士・白ひげ] ====================
+          // 1. 体（茶色い修道ローブ）
+          ctx.fillStyle = '#78350f';
+          ctx.beginPath();
+          ctx.moveTo(bx - 6.5, by + 12);
+          ctx.lineTo(bx - 4, by - 1 + bob);
+          ctx.lineTo(bx + 4, by - 1 + bob);
+          ctx.lineTo(bx + 6.5, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          // フードの肩掛け
+          ctx.fillStyle = '#451a03';
+          ctx.beginPath();
+          ctx.moveTo(bx - 5.5, by - 2 + bob);
+          ctx.lineTo(bx + 5.5, by - 2 + bob);
+          ctx.lineTo(bx, by + 2.5 + bob);
+          ctx.closePath();
+          ctx.fill();
+
+          // 2. 頭（肌色・白ヒゲ）
+          ctx.fillStyle = '#ffedd5';
+          ctx.beginPath();
+          ctx.arc(bx, by - 6 + bob, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // トンスラ（ハゲ頭の周りのグレーの髪のリング）
+          ctx.strokeStyle = '#9ca3af';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(bx, by - 8.5 + bob, 3.2, Math.PI, Math.PI * 2);
+          ctx.stroke();
+
+          // 豊かな白いあごひげ
+          ctx.fillStyle = '#f3f4f6';
+          ctx.beginPath();
+          ctx.moveTo(bx - 3, by - 4 + bob);
+          ctx.lineTo(bx + 3, by - 4 + bob);
+          ctx.lineTo(bx, by + 1.5 + bob);
+          ctx.closePath();
+          ctx.fill();
+
+          // 目
+          ctx.fillStyle = '#374151';
+          ctx.fillRect(bx - 1.8, by - 6 + bob, 1, 1);
+          ctx.fillRect(bx + 0.8, by - 6 + bob, 1, 1);
+
+          // 3. 持ち物
+          // 胸元：赤茶の革装の分厚い本
+          ctx.fillStyle = '#9a3412';
+          ctx.beginPath();
+          ctx.roundRect(bx - 3.5, by + 1 + bob, 7, 5, 1);
+          ctx.fill();
+          ctx.fillStyle = '#fef3c7'; // 紙面
+          ctx.fillRect(bx - 2.5, by + 2 + bob, 5, 1);
+
+          // 左手：曲がった木製の長い巡礼杖
+          ctx.strokeStyle = '#451a03';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(bx + 6, by + 12);
+          ctx.lineTo(bx + 6, by - 12 + bob);
+          ctx.stroke();
+          ctx.fillStyle = '#451a03';
+          ctx.beginPath();
+          ctx.arc(bx + 4.5, by - 11.5 + bob, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (surv.id === 2) {
+          // ==================== 高橋 (Takahashi) [赤髪弓使い] ====================
+          // 1. 体（茶色の革アーマー＆オリーブ）
+          ctx.fillStyle = '#7c2d12';
+          ctx.beginPath();
+          ctx.moveTo(bx - 6, by + 12);
+          ctx.lineTo(bx - 3.5, by - 2 + bob);
+          ctx.lineTo(bx + 3.5, by - 2 + bob);
+          ctx.lineTo(bx + 6, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.fillStyle = '#a16207'; // レザーベスト
+          ctx.fillRect(bx - 2, by + bob, 4, 8);
+
+          // 背中の矢筒（斜めに背負う）
+          ctx.save();
+          ctx.translate(bx - 5.5, by + 1.5 + bob);
+          ctx.rotate(-Math.PI / 6);
+          ctx.fillStyle = '#451a03';
+          ctx.fillRect(-2, -3, 4, 10);
+          ctx.fillStyle = '#e2e8f0'; // 矢の羽
+          ctx.fillRect(-1.5, -6, 1, 3);
+          ctx.fillRect(0.5, -7, 1, 4);
+          ctx.restore();
+
+          // 2. 頭（肌色）
+          ctx.fillStyle = '#ffedd5';
+          ctx.beginPath();
+          ctx.arc(bx, by - 6 + bob, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 3. 赤褐色の三つ編み
+          ctx.fillStyle = '#c2410c';
+          ctx.beginPath();
+          ctx.arc(bx, by - 7.5 + bob, 5, 0, Math.PI * 2);
+          ctx.fill();
+          // 三つ編みが右肩に垂れる
+          ctx.beginPath();
+          ctx.ellipse(bx + 4.2, by - 2 + bob, 1.8, 3.5, Math.PI / 6, 0, Math.PI * 2);
+          ctx.ellipse(bx + 5.2, by + 2 + bob, 1.4, 2.5, Math.PI / 6, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 目（りりしい表情）
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(bx - 2, by - 7 + bob, 1.2, 1);
+          ctx.fillRect(bx + 1, by - 7 + bob, 1.2, 1);
+
+          // 4. 持ち物：左手の木製ロングボウ（弓）
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(bx + 7.5, by + 2 + bob, 9, -Math.PI / 1.7, Math.PI / 1.7);
+          ctx.stroke();
+          // 弓弦
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(bx + 7.5, by - 7 + bob);
+          ctx.lineTo(bx + 7.5, by + 11 + bob);
+          ctx.stroke();
+
+        } else if (surv.id === 3) {
+          // ==================== 田中 (Tanaka) [頑強な鍛冶屋] ====================
+          // 1. 体（がっしりした体型、黒インナーと革エプロン）
+          ctx.fillStyle = '#3f3f46';
+          ctx.beginPath();
+          ctx.moveTo(bx - 8.5, by + 12);
+          ctx.lineTo(bx - 5.5, by - 3 + bob);
+          ctx.lineTo(bx + 5.5, by - 3 + bob);
+          ctx.lineTo(bx + 8.5, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          // 分厚い革エプロン
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(bx - 4.5, by - 1 + bob, 9, 13);
+
+          // 2. 頭（肌色）
+          ctx.fillStyle = '#ffedd5';
+          ctx.beginPath();
+          ctx.arc(bx, by - 7 + bob, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // たくましい茶色の髭
+          ctx.fillStyle = '#7c2d12';
+          ctx.beginPath();
+          ctx.arc(bx - 3.5, by - 4 + bob, 2.5, 0, Math.PI * 2);
+          ctx.arc(bx + 3.5, by - 4 + bob, 2.5, 0, Math.PI * 2);
+          ctx.arc(bx, by - 2 + bob, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 豊かな茶髪
+          ctx.fillStyle = '#7c2d12';
+          ctx.beginPath();
+          ctx.arc(bx, by - 9.5 + bob, 5.2, Math.PI, 0);
+          ctx.fill();
+
+          // 瞳
+          ctx.fillStyle = '#f8fafc';
+          ctx.fillRect(bx - 2.5, by - 7 + bob, 1.2, 1.2);
+          ctx.fillRect(bx + 1.5, by - 7 + bob, 1.2, 1.2);
+          ctx.fillStyle = '#020617';
+          ctx.fillRect(bx - 2, by - 7 + bob, 0.8, 0.8);
+          ctx.fillRect(bx + 2, by - 7 + bob, 0.8, 0.8);
+
+          // 3. 持ち物
+          // 右手：巨大な両手鉄ハンマー
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(bx - 6, by + 10);
+          ctx.lineTo(bx - 13, by - 4 + bob);
+          ctx.stroke();
+          // ハンマーヘッド（大きな金属矩形）
+          ctx.fillStyle = '#52525b';
+          ctx.strokeStyle = '#9ca3af';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.roundRect(bx - 16, by - 8 + bob, 6.5, 5, 1);
+          ctx.fill();
+          ctx.stroke();
+
+          // 左手：大きな丸型木盾（鉄補強）
+          ctx.fillStyle = '#7c2d12';
+          ctx.beginPath();
+          ctx.arc(bx + 9.5, by + 4 + bob, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#9ca3af';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          ctx.fillStyle = '#cbd5e1';
+          ctx.beginPath();
+          ctx.arc(bx + 9.5, by + 4 + bob, 2, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (surv.id === 4) {
+          // ==================== 伊藤 (Ito) [黒髪フード・アサシン] ====================
+          // 1. 後ろになびく濃紺マント
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.moveTo(bx - 5, by + 1 + bob);
+          ctx.lineTo(bx - 9, by + 12);
+          ctx.lineTo(bx - 1, by + 12);
+          ctx.lineTo(bx + 5, by + 1 + bob);
+          ctx.closePath();
+          ctx.fill();
+
+          // 2. 体（ダークグレーの戦闘衣）
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.moveTo(bx - 6, by + 12);
+          ctx.lineTo(bx - 4, by - 1 + bob);
+          ctx.lineTo(bx + 4, by - 1 + bob);
+          ctx.lineTo(bx + 6, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          // 3. 頭（肌色をフードの奥に）
+          ctx.fillStyle = '#ffedd5';
+          ctx.beginPath();
+          ctx.arc(bx, by - 6 + bob, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 濃紺のフード
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.arc(bx, by - 7.5 + bob, 5.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // フードの影
+          ctx.fillStyle = '#020617';
+          ctx.beginPath();
+          ctx.arc(bx, by - 7 + bob, 4.4, Math.PI / 6, Math.PI * 5 / 6, true);
+          ctx.lineTo(bx, by - 2 + bob);
+          ctx.closePath();
+          ctx.fill();
+
+          // 青い瞳（フードから覗く）
+          ctx.fillStyle = '#38bdf8';
+          ctx.fillRect(bx + 1.2, by - 6 + bob, 1.2, 1.2);
+
+          // 黒い前髪が片目を隠す
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(bx - 3, by - 9.5 + bob);
+          ctx.lineTo(bx + 0.5, by - 4 + bob);
+          ctx.stroke();
+
+          // 4. 持ち物
+          // 右手：小型の手斧（ハチェット）
+          ctx.strokeStyle = '#7c2d12';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(bx - 4, by + 7);
+          ctx.lineTo(bx - 11, by + 10);
+          ctx.stroke();
+          ctx.fillStyle = '#94a3b8'; // 鉄刃
+          ctx.beginPath();
+          ctx.moveTo(bx - 9, by + 7);
+          ctx.quadraticCurveTo(bx - 12, by + 4, bx - 13, by + 6);
+          ctx.lineTo(bx - 10, by + 11);
+          ctx.closePath();
+          ctx.fill();
+
+          // 左腰のナイフの鞘
+          ctx.fillStyle = '#451a03';
+          ctx.fillRect(bx + 4.5, by + 4 + bob, 2.5, 6);
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(bx + 3.5, by + 3.5 + bob, 4.5, 1);
+        }
+
+        ctx.restore();
+
+        // 救助マーク、テキスト、数字の描画
+        const pulse = Math.sin(performance.now() / 150) * 1.5;
+
+        // 頭上に救出用の番号（1〜5）を表示
+        ctx.fillStyle = surv.saved ? '#10b981' : '#ef4444';
         ctx.beginPath();
-        ctx.arc(rx, ry, 11, 0, Math.PI * 2);
+        ctx.arc(rx, ry - 14 + bob, 5, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 0.8;
         ctx.stroke();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 8px monospace';
+        ctx.font = 'bold 7px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(String(surv.id + 1), rx, ry + 3);
+        ctx.fillText(String(surv.id + 1), rx, ry - 11.5 + bob);
 
-        const pulse = Math.sin(performance.now() / 150) * 1.5;
         if (!surv.saved) {
           ctx.fillStyle = '#dc2626';
-          ctx.fillRect(rx - 16, ry - 25 + pulse, 32, 9);
+          ctx.fillRect(rx - 16, ry - 30 + pulse, 32, 9);
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 7px sans-serif';
-          ctx.fillText('HELP!', rx, ry - 18 + pulse);
+          ctx.fillText('HELP!', rx, ry - 23 + pulse);
 
           // プレイヤーが近くにいる場合、操作案内テキストを表示
           const pDist = Math.sqrt((this.playerX - surv.x) ** 2 + (this.playerY - surv.y) ** 2);
@@ -969,14 +1560,14 @@ export class GameEngine {
             ctx.fillStyle = '#10b981';
             ctx.font = 'bold 9px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('[右クリックで救助]', rx, ry - 32 + pulse);
+            ctx.fillText('[右クリックで救助]', rx, ry - 37 + pulse);
           }
         } else {
           ctx.fillStyle = '#10b981';
-          ctx.fillRect(rx - 16, ry - 24, 32, 9);
+          ctx.fillRect(rx - 16, ry - 29, 32, 9);
           ctx.fillStyle = '#fff';
           ctx.font = '7px sans-serif';
-          ctx.fillText('SAFE', rx, ry - 17);
+          ctx.fillText('SAFE', rx, ry - 22);
         }
       }
     });
