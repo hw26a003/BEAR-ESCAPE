@@ -12,6 +12,66 @@ import {
   Heart
 } from 'lucide-react';
 
+interface PixelArtImageProps {
+  src: string;
+  alt: string;
+  className?: string;
+  pixelSize?: number;
+}
+
+function PixelArtImage({ src, alt, className, pixelSize = 5 }: PixelArtImageProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.referrerPolicy = "no-referrer";
+    img.src = src;
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const width = img.width || 256;
+      const height = img.height || 144;
+      canvas.width = width;
+      canvas.height = height;
+
+      // 低解像度オフスクリーンに縮小描画
+      const scale = 1 / pixelSize;
+      const scaledWidth = Math.max(1, Math.floor(width * scale));
+      const scaledHeight = Math.max(1, Math.floor(height * scale));
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = scaledWidth;
+      offscreen.height = scaledHeight;
+      const oCtx = offscreen.getContext("2d");
+      if (!oCtx) return;
+
+      oCtx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+
+      // 元のキャンバスに拡大描画（アンチエイリアス無効）
+      ctx.clearRect(0, 0, width, height);
+      ctx.imageSmoothingEnabled = false;
+      (ctx as any).mozImageSmoothingEnabled = false;
+      (ctx as any).webkitImageSmoothingEnabled = false;
+      (ctx as any).msImageSmoothingEnabled = false;
+
+      ctx.drawImage(offscreen, 0, 0, scaledWidth, scaledHeight, 0, 0, width, height);
+    };
+  }, [src, pixelSize]);
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className={className} 
+      style={{ imageRendering: 'pixelated' }}
+      aria-label={alt}
+    />
+  );
+}
+
 const SURVIVOR_COORDS = [
   { name: "佐藤 (Sato)", x: 22, y: 35 },
   { name: "鈴木 (Suzuki)", x: 65, y: 20 },
@@ -20,12 +80,18 @@ const SURVIVOR_COORDS = [
   { name: "伊藤 (Ito)", x: 18, y: 72 }
 ];
 
+const formatBatteryTime = (totalSeconds: number) => {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  return `${mins} MIN ${secs.toString().padStart(2, '0')} SEC`;
+};
+
 export default function App() {
   // モックシミュレーター用ステート
   const [isGameStarted, setIsGameStarted] = useState(false);
 
   const [flashlightOn, setFlashlightOn] = useState(true);
-  const [batteryMinutes, setBatteryMinutes] = useState(10); // 10分〜0分
+  const [batterySeconds, setBatterySeconds] = useState(600); // 10分(600秒)〜0秒
   const [isRunning, setIsRunning] = useState(false);
   const [stamina, setStamina] = useState(100);
   const [isStaminaExhausted, setIsStaminaExhausted] = useState(false);
@@ -40,10 +106,10 @@ export default function App() {
   const [showAllSignalMarkers, setShowAllSignalMarkers] = useState(false);
   const [activeSafeRouteIndex, setActiveSafeRouteIndex] = useState<number | null>(null);
 
-  // 懐中電灯点滅演出 (バッテリー2分以下の場合)
+  // 懐中電灯点滅演出 (バッテリー2分(120秒)以下の場合)
   const [flickerState, setFlickerState] = useState(true);
   useEffect(() => {
-    if (batteryMinutes <= 2 && flashlightOn) {
+    if (batterySeconds <= 120 && flashlightOn) {
       const flickerTimer = setInterval(() => {
         setFlickerState(prev => {
           const next = Math.random() > 0.3;
@@ -58,7 +124,7 @@ export default function App() {
     } else {
       setFlickerState(true);
     }
-  }, [batteryMinutes, flashlightOn]);
+  }, [batterySeconds, flashlightOn]);
 
   // 音声（ビープ音）シミュレーター用のオーディオコンテキスト（ブラウザ制限があるためボタン押下時に初期化）
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -150,7 +216,7 @@ export default function App() {
             onStaminaChange: (val) => setStamina(val),
             onStaminaExhausted: (exhausted) => setIsStaminaExhausted(exhausted),
             onRunningChange: (running) => setIsRunning(running),
-            onBatteryChange: (minutes) => setBatteryMinutes(minutes),
+            onBatteryChange: (seconds) => setBatterySeconds(seconds),
             onBearDistanceChange: (dist) => setBearDistance(dist),
             onBearOnScreenChange: (onScreen) => setIsBearOnScreen(onScreen),
             onItemsChange: (items) => setActiveItems(items),
@@ -442,7 +508,7 @@ export default function App() {
     setActiveItems({ map: false, bell: 0, spray: 0 });
     setIsBearOnScreen(true);
     setBearDistance(250);
-    setBatteryMinutes(10);
+    setBatterySeconds(600);
     setSavedSurvivors([false, false, false, false, false]);
     setStamina(100);
     setIsRunning(false);
@@ -462,7 +528,7 @@ export default function App() {
     if (engineRef.current) {
       return engineRef.current.getLightRadius();
     }
-    const percentage = batteryMinutes / 10;
+    const percentage = batterySeconds / 600;
     return Math.max(20, percentage * 120); // 120pxから徐々に縮小
   };
 
@@ -482,8 +548,8 @@ export default function App() {
         {/* Header */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-baseline border-b border-[#333] pb-3 mb-4">
           <div className="flex flex-col">
-            <h1 className="text-2xl md:text-3xl font-serif italic text-[#8B0000] tracking-tighter flex items-center gap-2">
-              <span>熊からの脱出</span>
+            <h1 className="text-3xl md:text-4xl font-horror text-[#8B0000] tracking-wider flex items-center gap-3">
+              <span>bear escape</span>
               <span className="text-[10px] font-sans tracking-wider bg-[#8B0000]/15 text-[#ff4d4d] px-2 py-0.5 border border-[#8B0000]/30 rounded">
                 本編 (PLAYABLE GAME)
               </span>
@@ -639,14 +705,14 @@ export default function App() {
 
                   {/* Combat Arena (Center) */}
                   <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                    {/* 恐ろしいクマのドット調アイコン */}
-                    <div className="w-16 h-16 bg-[#1f0505] border-2 border-[#8B0000] flex flex-col items-center justify-center rounded-sm relative shadow-[0_0_15px_rgba(139,0,0,0.6)]">
-                      <div className="flex justify-between w-8 mt-2">
-                        <div className="w-3 h-3 bg-red-600 rounded-sm animate-ping"></div>
-                        <div className="w-3 h-3 bg-red-600 rounded-sm animate-ping"></div>
-                      </div>
-                      <span className="text-[8px] font-mono text-white mt-1 uppercase">URSUS</span>
-                      <div className="absolute top-1 left-1 text-[7px] text-[#ffcc00] font-mono">[!]</div>
+                    {/* 戦闘画面のクマの描写をドット絵（PixelArtImage）に置き換え */}
+                    <div className="w-64 h-36 bg-[#1f0505] border-2 border-[#8B0000] flex flex-col items-center justify-center rounded-sm relative shadow-[0_0_15px_rgba(139,0,0,0.6)] overflow-hidden">
+                      <PixelArtImage 
+                        src="/src/assets/images/zombie_bear_forest_1784349011960.jpg" 
+                        alt="Zombie Bear" 
+                        className="w-full h-full object-cover"
+                        pixelSize={8}
+                      />
                     </div>
                     <p className="text-xs font-serif italic text-red-500 tracking-wider">
                       「目の前に異形のクマが立ち塞がっている...」
@@ -748,7 +814,7 @@ export default function App() {
                         LIGHT: {flashlightOn ? "ON" : "OFF"}
                       </button>
                       <span className="bg-black/80 border border-gray-600 px-2 py-1 text-[8px] font-mono text-[#ffcc00] rounded">
-                        BATTERY: {batteryMinutes} MIN
+                        BATTERY: {formatBatteryTime(batterySeconds)}
                       </span>
                     </div>
 
@@ -799,9 +865,9 @@ export default function App() {
               <button 
                 id="reset-mock-btn"
                 onClick={resetMock}
-                className="text-[#ffcc00] hover:underline flex items-center gap-0.5"
+                className="bg-amber-950/20 border-2 border-[#ffcc00] hover:bg-[#ffcc00]/20 px-3.5 py-1.5 text-xs font-mono font-bold text-[#ffcc00] tracking-wider uppercase rounded-none cursor-pointer flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(255,204,0,0.2)]"
               >
-                <RotateCcw className="w-2.5 h-2.5" /> ゲームをリセット (RETRY)
+                <RotateCcw className="w-3.5 h-3.5" /> ゲームをリセット (RETRY)
               </button>
             </div>
 

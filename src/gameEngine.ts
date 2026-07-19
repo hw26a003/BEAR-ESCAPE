@@ -40,7 +40,7 @@ export interface EngineCallbacks {
   onStaminaChange: (val: number) => void;
   onStaminaExhausted: (exhausted: boolean) => void;
   onRunningChange: (running: boolean) => void;
-  onBatteryChange: (minutes: number) => void;
+  onBatteryChange: (seconds: number) => void;
   onBearDistanceChange: (distance: number) => void;
   onBearOnScreenChange: (onScreen: boolean) => void;
   onItemsChange: (items: { map: boolean; bell: number; spray: number }) => void;
@@ -736,7 +736,7 @@ export class GameEngine {
     // 10. React通知 (距離・接近・バッテリー)
     this.callbacks.onBearDistanceChange(Math.round(closestDist));
     this.callbacks.onBearOnScreenChange(anyBearInCam);
-    this.callbacks.onBatteryChange(Math.ceil(this.batterySeconds / 60));
+    this.callbacks.onBatteryChange(this.batterySeconds);
   }
 
   // React State への同期
@@ -744,7 +744,7 @@ export class GameEngine {
     this.callbacks.onStaminaChange(this.stamina);
     this.callbacks.onStaminaExhausted(this.isStaminaExhausted);
     this.callbacks.onRunningChange(this.isRunning);
-    this.callbacks.onBatteryChange(Math.ceil(this.batterySeconds / 60));
+    this.callbacks.onBatteryChange(this.batterySeconds);
     
     let closestDist = 99999;
     let anyBearInCam = false;
