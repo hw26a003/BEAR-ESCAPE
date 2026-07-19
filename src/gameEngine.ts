@@ -516,7 +516,7 @@ export class GameEngine {
     }
 
     // スタミナゲージのリアルタイム増減
-    const shiftPressed = keys['shift'];
+    const shiftPressed = keys['shift'] || keys['Shift'];
     if (shiftPressed && isMoving && !this.isStaminaExhausted) {
       this.isRunning = true;
       this.stamina = Math.max(0, this.stamina - (100 / (5 * 60))); // 5秒で100%消費
@@ -542,7 +542,7 @@ export class GameEngine {
     this.callbacks.onRunningChange(this.isRunning);
 
     // プレイヤー移動速度
-    const speed = this.isRunning && isMoving ? 4.5 : 2.8; // 速度を少し落とす (ダッシュ4.5, 通常2.8)
+    const speed = this.isRunning && isMoving ? 6.0 : 3.8; // さらに高速化 (ダッシュ6.0, 通常3.8)
     let nextPlayerX = this.playerX;
     let nextPlayerY = this.playerY;
 

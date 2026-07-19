@@ -108,11 +108,13 @@ export default function App() {
 
   // 懐中電灯点滅演出 (バッテリー2分(120秒)以下の場合)
   const [flickerState, setFlickerState] = useState(true);
+  const flickerStateRef = useRef(true);
   useEffect(() => {
     if (batterySeconds <= 120 && flashlightOn) {
       const flickerTimer = setInterval(() => {
         setFlickerState(prev => {
           const next = Math.random() > 0.3;
+          flickerStateRef.current = next;
           if (!next) {
             // パチパチというノイズ音のシミュレート
             playBeep(120, 0.05, 'triangle');
@@ -123,6 +125,7 @@ export default function App() {
       return () => clearInterval(flickerTimer);
     } else {
       setFlickerState(true);
+      flickerStateRef.current = true;
     }
   }, [batterySeconds, flashlightOn]);
 
@@ -164,12 +167,15 @@ export default function App() {
 
   // ゲーム更新・描画のメインループ
   useEffect(() => {
+    let isMounted = true;
+
     // 1. キーボード入力の管理
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       keysRef.current[key] = true;
+      keysRef.current['shift'] = e.shiftKey;
 
-      if (e.key === 'Shift') {
+      if (key === 'shift') {
         if (engineRef.current && !engineRef.current.isStaminaExhausted) {
           engineRef.current.isRunning = true;
           setIsRunning(true);
@@ -190,8 +196,9 @@ export default function App() {
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       keysRef.current[key] = false;
+      keysRef.current['shift'] = e.shiftKey;
 
-      if (e.key === 'Shift') {
+      if (key === 'shift') {
         if (engineRef.current) {
           engineRef.current.isRunning = false;
           setIsRunning(false);
@@ -199,14 +206,26 @@ export default function App() {
       }
     };
 
+    // フォーカスが失われた時、またはウィンドウが非アクティブな時にすべての入力状態をリセット
+    const handleBlur = () => {
+      keysRef.current = {};
+      if (engineRef.current) {
+        engineRef.current.isRunning = false;
+        setIsRunning(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
 
     // 2. ゲームループ (requestAnimationFrame)
     let animFrameId: number;
     let lastTime = performance.now();
 
     const loop = (time: number) => {
+      if (!isMounted) return; // コンポーネント再マウント、状態変化後の古いループ（ゾンビループ）を完全に遮断
+
       const dt = Math.min(33, time - lastTime); // 30fps〜60fpsの範囲で安定化
       lastTime = time;
 
@@ -250,7 +269,7 @@ export default function App() {
         }
 
         engineRef.current.update(dt, keysRef.current);
-        engineRef.current.draw(flickerState);
+        engineRef.current.draw(flickerStateRef.current);
       }
 
       animFrameId = requestAnimationFrame(loop);
@@ -259,11 +278,13 @@ export default function App() {
     animFrameId = requestAnimationFrame(loop);
 
     return () => {
+      isMounted = false; // クリーンアップ時にフラグを倒し、古いアニメーションのコールバックスケジュールを無効にする
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
       cancelAnimationFrame(animFrameId);
     };
-  }, [isGameStarted, previewEncounter, isEscaped, activeItems.map, activeItems.bell, activeItems.spray, flickerState]);
+  }, [isGameStarted, previewEncounter, isEscaped, activeItems.map, activeItems.bell, activeItems.spray]);
 
   // 簡易シンセビープ音生成
   const initAudio = () => {
@@ -519,6 +540,7 @@ export default function App() {
     setShowAllSignalMarkers(false);
     setActiveSafeRouteIndex(null);
     setActiveDialog(null);
+    keysRef.current = {};
     engineRef.current = null;
   };
 
@@ -694,70 +716,11 @@ export default function App() {
                     もう一度プレイする (RETRY)
                   </button>
                 </div>
-              ) : previewEncounter ? (
-                /* 戦闘コマンド画面 */
-                <div className="absolute inset-0 bg-gradient-to-b from-[#110101] to-[#050000] p-4 flex flex-col justify-between">
-                  {/* Header */}
-                  <div className="flex justify-between items-center border-b border-[#8B0000]/40 pb-2">
-                    <span className="text-[10px] font-mono text-[#ffcc00] animate-pulse">!! BEAST CONTACTED !!</span>
-                    <span className="text-[9px] font-mono text-gray-400">熊との遭遇・戦闘画面</span>
-                  </div>
-
-                  {/* Combat Arena (Center) */}
-                  <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                    {/* 戦闘画面のクマの描写をドット絵（PixelArtImage）に置き換え */}
-                    <div className="w-64 h-36 bg-[#1f0505] border-2 border-[#8B0000] flex flex-col items-center justify-center rounded-sm relative shadow-[0_0_15px_rgba(139,0,0,0.6)] overflow-hidden">
-                      <PixelArtImage 
-                        src="/src/assets/images/zombie_bear_forest_1784349011960.jpg" 
-                        alt="Zombie Bear" 
-                        className="w-full h-full object-cover"
-                        pixelSize={8}
-                      />
-                    </div>
-                    <p className="text-xs font-serif italic text-red-500 tracking-wider">
-                      「目の前に異形のクマが立ち塞がっている...」
-                    </p>
-                    
-                    {encounterResult && (
-                      <div className="mt-1 px-3 py-1 bg-black/80 border border-[#8B0000] text-[10px] text-[#ffcc00] font-mono text-center max-w-[280px]">
-                        {encounterResult}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions Panel */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#8B0000]/40">
-                    <button 
-                      id="combat-btn-run"
-                      onClick={() => handleEncounterAction('run')}
-                      className="py-1.5 bg-[#8B0000]/30 hover:bg-[#8B0000] border border-[#8B0000] text-[9px] font-mono uppercase text-white tracking-wider rounded transition-all cursor-pointer"
-                    >
-                      走って逃げる
-                    </button>
-                    <button 
-                      id="combat-btn-dead"
-                      onClick={() => handleEncounterAction('dead')}
-                      className="py-1.5 bg-[#222] hover:bg-[#333] border border-[#444] text-[9px] font-mono uppercase text-white tracking-wider rounded transition-all cursor-pointer"
-                    >
-                      死んだふり
-                    </button>
-                    <button 
-                      id="combat-btn-spray"
-                      disabled={activeItems.spray <= 0}
-                      onClick={() => handleEncounterAction('spray')}
-                      className={`py-1.5 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
-                        activeItems.spray > 0 
-                          ? 'bg-gradient-to-r from-amber-900 to-amber-700 hover:from-amber-800 hover:to-amber-600 border-[#ffcc00] text-white' 
-                          : 'bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed'
-                      }`}
-                    >
-                      スプレーを使う ({activeItems.spray})
-                    </button>
-                  </div>
-                </div>
               ) : (
-                /* 探索画面 (HTML5 Canvas 2D) */
+                /* 探索＆戦闘（重ね合わせ）画面 */
                 <>
+                  {/* 探索画面 (HTML5 Canvas 2D) - 常にマウント状態を保ち、戦闘中は hidden クラスで非表示にする */}
+                  <div className={previewEncounter ? "hidden" : "absolute inset-0"}>
                     <canvas 
                       ref={canvasRef} 
                       width={960}
@@ -854,10 +817,74 @@ export default function App() {
                         <div className="text-[7.5px] text-emerald-500/80 mt-1">※GPSレーダーが自動的に起動し、脱出口への安全ルート（黄色い点滅線）が10秒間表示されます。</div>
                       </div>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
+
+                  {/* 戦闘コマンド画面 - previewEncounterがtrueの時のみ、z-10かつabsoluteで最前面に重ねて表示する */}
+                  {previewEncounter && (
+                    <div className="absolute inset-0 bg-gradient-to-b from-[#110101] to-[#050000] p-4 flex flex-col justify-between z-10">
+                      {/* Header */}
+                      <div className="flex justify-between items-center border-b border-[#8B0000]/40 pb-2">
+                        <span className="text-[10px] font-mono text-[#ffcc00] animate-pulse">!! BEAST CONTACTED !!</span>
+                        <span className="text-[9px] font-mono text-gray-400">熊との遭遇・戦闘画面</span>
+                      </div>
+
+                      {/* Combat Arena (Center) */}
+                      <div className="flex-1 flex flex-col items-center justify-center gap-2">
+                        {/* 戦闘画面のクマの描写をドット絵（PixelArtImage）に置き換え */}
+                        <div className="w-64 h-36 bg-[#1f0505] border-2 border-[#8B0000] flex flex-col items-center justify-center rounded-sm relative shadow-[0_0_15px_rgba(139,0,0,0.6)] overflow-hidden">
+                          <PixelArtImage 
+                            src="/src/assets/images/zombie_bear_forest_1784349011960.jpg" 
+                            alt="Zombie Bear" 
+                            className="w-full h-full object-cover"
+                            pixelSize={8}
+                          />
+                        </div>
+                        <p className="text-xs font-serif italic text-red-500 tracking-wider">
+                          「目の前に異形のクマが立ち塞がっている...」
+                        </p>
+                        
+                        {encounterResult && (
+                          <div className="mt-1 px-3 py-1 bg-black/80 border border-[#8B0000] text-[10px] text-[#ffcc00] font-mono text-center max-w-[280px]">
+                            {encounterResult}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions Panel */}
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#8B0000]/40">
+                        <button 
+                          id="combat-btn-run"
+                          onClick={() => handleEncounterAction('run')}
+                          className="py-1.5 bg-[#8B0000]/30 hover:bg-[#8B0000] border border-[#8B0000] text-[9px] font-mono uppercase text-white tracking-wider rounded transition-all cursor-pointer"
+                        >
+                          走って逃げる
+                        </button>
+                        <button 
+                          id="combat-btn-dead"
+                          onClick={() => handleEncounterAction('dead')}
+                          className="py-1.5 bg-[#222] hover:bg-[#333] border border-[#444] text-[9px] font-mono uppercase text-white tracking-wider rounded transition-all cursor-pointer"
+                        >
+                          死んだふり
+                        </button>
+                        <button 
+                          id="combat-btn-spray"
+                          disabled={activeItems.spray <= 0}
+                          onClick={() => handleEncounterAction('spray')}
+                          className={`py-1.5 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
+                            activeItems.spray > 0 
+                              ? 'bg-gradient-to-r from-amber-900 to-amber-700 hover:from-amber-800 hover:to-amber-600 border-[#ffcc00] text-white' 
+                              : 'bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed'
+                          }`}
+                        >
+                          スプレーを使う ({activeItems.spray})
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
+          </div>
 
             {/* In-Game Instructions & Control Guides */}
             <div className="mt-2 text-[10px] font-mono text-gray-500 flex justify-between items-center px-1">
